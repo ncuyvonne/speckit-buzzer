@@ -1,0 +1,15 @@
+{
+  "name": "speckit-buzzer",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces",
+    "test:e2e": "npm run test:e2e --workspace @speckit-buzzer/frontend",
+    "build": "npm run build --workspaces"
+  }
+}

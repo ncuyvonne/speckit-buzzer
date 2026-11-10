@@ -1,0 +1,91 @@
+@startuml
+title 001 角色與階段同步－重連恢復時序圖
+autonumber
+
+actor 老師
+actor 學生
+participant "老師操作畫面" as TeacherUI
+participant "學生操作畫面" as StudentUI
+participant "HTTP／WebSocket server" as WebSocketServer
+participant "訊息處理器" as Handler
+participant "老師密碼環境設定" as Credentials
+participant "活動狀態" as ActivityState
+participant "有效組別名冊" as GroupRoster
+participant "在線連線" as Connections
+participant "分頁 sessionStorage" as StudentStorage
+
+== 老師斷線重連或重新整理 ==
+老師 -> TeacherUI : 斷線重連或重新整理頁面
+TeacherUI -> Handler : 關閉舊連線
+Handler -> Connections : 清除舊連線角色與組別
+TeacherUI -> WebSocketServer : HTTP Upgrade（Origin）
+WebSocketServer -> WebSocketServer : 驗證本機 Origin allowlist
+alt Origin 允許
+  WebSocketServer --> TeacherUI : HTTP 101
+  WebSocketServer -> Handler : 接受新的 WebSocket 連線
+  Handler -> Connections : 建立 UNAUTHENTICATED 連線
+  Handler -> ActivityState : 讀取目前階段
+  Handler -> GroupRoster : 讀取有效組別清單
+  Handler --> TeacherUI : activity.snapshot
+  TeacherUI --> 老師 : 要求重新輸入密碼
+  老師 -> TeacherUI : 再次輸入老師密碼
+  TeacherUI -> Handler : teacher.authenticate { password, requestId }
+  Handler -> Credentials : 比對 TEACHER_PASSWORD
+  alt 密碼已設定且驗證成功
+    Handler -> Connections : 授予目前連線 TEACHER 角色
+    Handler --> TeacherUI : teacher.authenticated { ok: true }
+    Handler -> ActivityState : 讀取最新階段
+    Handler --> TeacherUI : activity.snapshot
+    TeacherUI --> 老師 : 恢復控制並顯示目前階段
+  else 密碼錯誤、空白或未設定
+    Handler --> TeacherUI : error { code: AUTH_INVALID }
+    TeacherUI --> 老師 : 維持未授權並顯示錯誤
+  end
+else Origin 不允許
+  WebSocketServer --> TeacherUI : HTTP 403（Upgrade 前拒絕）
+end
+
+== 學生重新整理或重連 ==
+學生 -> StudentUI : 重新整理頁面或網路重連
+StudentUI -> Handler : 關閉舊連線
+Handler -> Connections : 清除舊連線角色與組別
+StudentUI -> StudentStorage : 讀取保存的 groupId
+StudentUI -> WebSocketServer : HTTP Upgrade（Origin）
+WebSocketServer -> WebSocketServer : 驗證本機 Origin allowlist
+alt Origin 允許
+  WebSocketServer --> StudentUI : HTTP 101
+  WebSocketServer -> Handler : 接受新的 WebSocket 連線
+  Handler -> Connections : 建立 UNAUTHENTICATED 連線
+  Handler -> ActivityState : 讀取目前階段
+  Handler -> GroupRoster : 讀取有效組別清單
+  Handler --> StudentUI : activity.snapshot
+  StudentUI -> StudentStorage : 從 sessionStorage 讀取 groupId
+  alt 分頁有保存的 groupId
+    StudentUI -> Handler : student.join { groupId, requestId }
+    Handler -> Connections : 確認目前連線不是 TEACHER
+    Handler -> GroupRoster : 重新驗證 groupId
+    alt 組別仍有效
+      Handler -> Connections : 綁定新連線的 STUDENT 角色與 groupId
+      Handler --> StudentUI : student.joined { ok: true, groupId }
+      Handler -> ActivityState : 讀取最新階段
+      Handler --> StudentUI : activity.snapshot
+      StudentUI -> StudentStorage : 處理 student.joined 時保存有效 groupId
+      StudentUI --> 學生 : 恢復組別並顯示最新階段
+    else 組別已無效
+      Handler --> StudentUI : error { code: GROUP_INVALID }
+      StudentUI -> StudentStorage : 清除無效 groupId
+      StudentUI --> 學生 : 返回組別選擇畫面
+    end
+  else 分頁沒有保存的 groupId
+    StudentUI --> 學生 : 顯示組別選擇畫面
+  end
+else Origin 不允許
+  WebSocketServer --> StudentUI : HTTP 403（Upgrade 前拒絕）
+end
+
+note over TeacherUI,StudentStorage
+  每次重連都建立新的伺服器連線。
+  老師密碼不保存於瀏覽器；學生只保存組別 ID。
+end note
+
+@enduml
