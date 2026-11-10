@@ -117,7 +117,7 @@ description: "Implementation task list for 001 角色與階段同步"
 - [X] T035 [P] Align local setup commands and the acceptance walkthrough with the implemented scripts in `specs/001-role-phase-sync/quickstart.md`.
 - [X] T036 [P] Compare implemented components, data relationships, messages, stage changes, denied-Origin behavior and reconnect flows with `diagrams/001-role-phase-sync-component.puml`, `diagrams/001-role-phase-sync-class.puml`, `diagrams/001-role-phase-sync-sequence.puml`, `diagrams/001-role-phase-sync-sequence-recovery.puml` and `specs/001-role-phase-sync/contracts/realtime-websocket.md`; regenerate the four matching PNGs and record the comparison in `specs/001-role-phase-sync/validation-results.md`.
 - [X] T037 Run `npm run typecheck --workspaces`, `npm run test --workspaces`, `npm run test:e2e`, and `npm run build --workspaces`; record exact commands and actual results in `specs/001-role-phase-sync/validation-results.md`.
-- [ ] T038 Review `specs/001-role-phase-sync/spec.md`, `specs/001-role-phase-sync/contracts/realtime-websocket.md`, `.env.example` and `.gitignore` against completed behavior; verify password-disabled login, teacher reauthentication on each connection, documented error behavior and no credential disclosure; open the branch Pull Request with actual test results and address review before merge.
+- [X] T038 Review `specs/001-role-phase-sync/spec.md`, `specs/001-role-phase-sync/contracts/realtime-websocket.md`, `.env.example` and `.gitignore` against completed behavior; verify password-disabled login, teacher reauthentication on each connection, documented error behavior and no credential disclosure; open the branch Pull Request with actual test results and address review before merge.
 
 ---
 
