@@ -143,3 +143,13 @@ Each phase passed its gate before the next phase began.
 - `npm.cmd run build --workspaces`: PASS (Vite production build and backend TypeScript build).
 - `npm.cmd run test:e2e`: PASS (16/16, 1.0 minute).
 - Playwright printed all 16 passing cases but waited for its Windows Vite `webServer` child to exit. Stopping only the Vite PID started by this run let Playwright finish with exit code 0. Proxy `ECONNRESET`/`ECONNABORTED` messages occurred during deliberate disconnects and teardown.
+
+## 2026-11-11 STAGE_CONFLICT recovery
+
+- Test-first: extended the teacher phase-conflict E2E case to successfully advance after rejected stale transitions and assert the old alert disappears. Before the client fix, the case failed because one alert remained after the server broadcast the successful phase change.
+- `npm.cmd run test:e2e --workspace @speckit-buzzer/frontend -- tests/e2e/teacher-phase.spec.ts --grep "stage transition conflicts" --reporter=line`: PASS (1/1, 57.1 seconds).
+- `npm.cmd run typecheck --workspaces`: PASS (frontend and backend).
+- `npm.cmd run test --workspaces`: PASS (backend 8 files / 46 tests; frontend has no Vitest unit test files and exits successfully with `passWithNoTests`).
+- `npm.cmd run build --workspaces`: PASS (Vite production build and backend TypeScript build).
+- `npm.cmd run test:e2e`: PASS (16/16, 56.6 seconds).
+- The Windows Playwright runner waited for its Vite `webServer` child after all cases passed. Stopping only the Vite PID started by this test run allowed Playwright to exit with code 0. Proxy `ECONNRESET`/`ECONNABORTED` messages occurred during deliberate disconnects and teardown.

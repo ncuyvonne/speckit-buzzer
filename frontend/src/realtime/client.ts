@@ -169,7 +169,10 @@ export class RealtimeClient {
       return;
     }
     if (message.type === 'activity.phaseChanged' && isActivityStage(payload.stage)) {
-      this.store.update({ stage: payload.stage });
+      this.store.update({
+        stage: payload.stage,
+        ...(this.store.getSnapshot().serverError?.code === 'STAGE_CONFLICT' ? { serverError: null } : {}),
+      });
       return;
     }
     if (message.type === 'teacher.authenticated' && payload.ok === true) {

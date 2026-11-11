@@ -189,6 +189,10 @@ test('stage transition conflicts show corrective feedback without changing the d
   }
 
   expect(nextTransition).toBe(invalidTransitions.length);
+
+  await page.getByRole('button', { name: '開始搶答' }).click();
+  await expect(page.getByText('活動階段：搶答中')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test.describe('teacher login configuration', () => {
