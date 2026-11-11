@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StudentJoin } from './components/StudentJoin';
+import { GuidedNotesPanel } from './components/GuidedNotesPanel';
 import { TeacherPanel } from './components/TeacherPanel';
 import { RealtimeClient } from './realtime/client';
 
@@ -40,6 +41,20 @@ export default function App() {
           error={teacherError}
           onLogin={(password) => client.authenticate(password)}
           onAdvance={(from, to) => client.advance(from, to)}
+        />
+      )}
+      {state.role === 'TEACHER' && (
+        <GuidedNotesPanel
+          stage={state.stage}
+          connected={state.connection === 'connected'}
+          worksheetTitle={state.worksheetTitle}
+          questionIds={state.questionIds}
+          questionCount={state.questionCount}
+          busy={state.guidedNotesBusy}
+          error={state.guidedNotesError}
+          exportResult={state.guidedNotesExportResult}
+          onImport={(spreadsheetUrl, worksheetTitle) => client.importWorksheet(spreadsheetUrl, worksheetTitle)}
+          onExport={() => client.exportAnswers()}
         />
       )}
       {state.role !== 'TEACHER' && (

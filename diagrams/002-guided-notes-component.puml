@@ -1,0 +1,40 @@
+@startuml
+title 002 Guided Notes 匯入與匯出 - 組件圖
+left to right direction
+
+actor "老師" as Teacher
+component "課堂搶答介面" as UI
+component "WebSocket／RealtimeHub" as Hub
+component "GuidedNotesService" as Flow
+component "ActivityState" as Activity
+interface "WinningResultsProvider" as Results
+component "GoogleSheetsAdapter" as Adapter
+cloud "Google Sheets API" as Sheet
+component "Feature 003 結果來源" as Feature003
+
+Teacher --> UI : 選擇學習單／確認寫回
+UI --> Hub : guidedNotes.import／export
+Hub --> Flow : 驗證老師角色與 PREPARING／ENDED
+Flow --> Activity : 匯入時替換題號／寫回時讀取目前活動
+Flow --> Results : 取得伺服器端成功答案
+Feature003 ..> Results : 正式結果 provider
+Results ..> Flow : READY／UNAVAILABLE
+Flow --> Adapter : 解析、重讀、定位及批次寫回
+Adapter --> Sheet : metadata／grid values／values.batchUpdate
+Sheet ..> Adapter : 工作表資料／寫入結果
+Flow ..> Hub : 題號、結果或穩定錯誤
+Hub ..> UI : WebSocket response
+
+note bottom of Results
+Feature 003 尚未接入時使用
+UnavailableWinningResultsProvider；
+UNAVAILABLE 必須在寫入前拒絕。
+READY 的空答案清單才表示無人成功。
+end note
+
+note bottom of Adapter
+憑證只由後端環境變數載入；
+瀏覽器不直接呼叫 Google Sheets。
+只更新目標作答格，其他內容不變。
+end note
+@enduml

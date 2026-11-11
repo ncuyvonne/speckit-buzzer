@@ -1,6 +1,6 @@
 import { ActivityStore } from '../state/activity';
 import { StudentSelection } from '../state/student-selection';
-import type { ActivityStage, ClientMessage, ErrorCode } from './messages';
+import type { ActivityStage, ClientMessage, ErrorCode, GuidedNotesErrorCode } from './messages';
 
 const RECONNECT_BACKOFF_MS = [500, 1_000, 2_000, 4_000, 8_000] as const;
 
@@ -30,6 +30,26 @@ function createRequestId(): string {
 function isActivityStage(value: unknown): value is ActivityStage {
   return value === 'PREPARING' || value === 'BUZZING' || value === 'ENDED';
 }
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+const GUIDED_NOTES_ERROR_CODES = new Set<string>([
+  'GUIDED_NOTES_BUSY',
+  'SHEETS_NOT_CONFIGURED',
+  'SHEET_REFERENCE_INVALID',
+  'SHEET_ACCESS_DENIED',
+  'SHEET_NOT_FOUND',
+  'SHEET_LAYOUT_INVALID',
+  'QUESTION_IDS_INVALID',
+  'SHEET_READ_FAILED',
+  'WORKSHEET_NOT_IMPORTED',
+  'WINNING_RESULTS_UNAVAILABLE',
+  'QUESTION_TARGET_INVALID',
+  'SHEET_WRITE_FAILED',
+  'SHEET_WRITE_UNCONFIRMED',
+]);
 
 export class RealtimeClient {
   readonly store: ActivityStore;
@@ -89,6 +109,32 @@ export class RealtimeClient {
 
   advance(from: ActivityStage, to: ActivityStage): boolean {
     return this.#send({ type: 'activity.advance', requestId: createRequestId(), payload: { from, to } });
+  }
+
+  importWorksheet(spreadsheetUrl: string, worksheetTitle: string): boolean {
+    const sent = this.#send({
+      type: 'guidedNotes.import',
+      requestId: createRequestId(),
+      payload: { spreadsheetUrl, worksheetTitle },
+    });
+    if (sent) this.store.update({ guidedNotesBusy: true, guidedNotesError: null });
+    return sent;
+  }
+
+  exportAnswers(): boolean {
+    const sent = this.#send({
+      type: 'guidedNotes.export',
+      requestId: createRequestId(),
+      payload: {},
+    });
+    if (sent) {
+      this.store.update({
+        guidedNotesBusy: true,
+        guidedNotesError: null,
+        guidedNotesExportResult: null,
+      });
+    }
+    return sent;
   }
 
   #url(): string {
@@ -175,6 +221,36 @@ export class RealtimeClient {
       });
       return;
     }
+    if (
+      message.type === 'guidedNotes.snapshot'
+      && (payload.worksheetTitle === null || typeof payload.worksheetTitle === 'string')
+      && isStringArray(payload.questionIds)
+      && typeof payload.questionCount === 'number'
+      && payload.questionCount === payload.questionIds.length
+    ) {
+      this.store.applyGuidedNotesSnapshot(payload.worksheetTitle, payload.questionIds);
+      return;
+    }
+    if (
+      message.type === 'guidedNotes.imported'
+      && typeof payload.worksheetTitle === 'string'
+      && isStringArray(payload.questionIds)
+      && typeof payload.questionCount === 'number'
+      && payload.questionCount === payload.questionIds.length
+    ) {
+      this.store.applyGuidedNotesImport(payload.worksheetTitle, payload.questionIds);
+      return;
+    }
+    if (
+      message.type === 'guidedNotes.exported'
+      && Number.isSafeInteger(payload.writtenCellCount)
+      && Number(payload.writtenCellCount) >= 0
+      && Number.isSafeInteger(payload.clearedCellCount)
+      && Number(payload.clearedCellCount) >= 0
+    ) {
+      this.store.applyGuidedNotesExport(Number(payload.writtenCellCount), Number(payload.clearedCellCount));
+      return;
+    }
     if (message.type === 'teacher.authenticated' && payload.ok === true) {
       this.store.update({ role: 'TEACHER', serverError: null });
       return;
@@ -194,6 +270,13 @@ export class RealtimeClient {
       }
       this.store.update({
         serverError: { code: payload.code as ErrorCode, message: payload.message },
+        ...(GUIDED_NOTES_ERROR_CODES.has(payload.code)
+          ? {
+              guidedNotesBusy: false,
+              guidedNotesError: { code: payload.code as GuidedNotesErrorCode, message: payload.message },
+              guidedNotesExportResult: null,
+            }
+          : {}),
       });
     }
   }

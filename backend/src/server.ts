@@ -3,9 +3,18 @@ import type { AddressInfo } from 'node:net';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { loadConfig, MAX_MESSAGE_BYTES, type AppConfig } from './config.js';
+import {
+  loadConfig,
+  MAX_MESSAGE_BYTES,
+  parseGoogleServiceAccountCredentials,
+  type AppConfig,
+} from './config.js';
 import { ActivityState } from './domain/activity-state.js';
 import { GroupRoster } from './domain/group-roster.js';
+import { createGoogleSheetsAdapter } from './integrations/google-sheets/adapter.js';
+import type { GoogleSheetsAdapter } from './integrations/google-sheets/types.js';
+import { GuidedNotesService, type WinningResultsProvider } from './guided-notes/service.js';
+import { UnavailableWinningResultsProvider } from './guided-notes/unavailable-results.js';
 import { attachHeartbeat, type HeartbeatOptions } from './realtime/heartbeat.js';
 import { RealtimeHub } from './realtime/handler.js';
 
@@ -15,7 +24,12 @@ export interface RealtimeServerOptions {
   readonly config?: AppConfig;
   readonly host?: string;
   readonly port?: number;
+  readonly allowedOrigin?: string;
   readonly heartbeat?: HeartbeatOptions;
+  readonly guidedNotes?: {
+    readonly sheetsAdapter?: GoogleSheetsAdapter;
+    readonly winningResultsProvider?: WinningResultsProvider;
+  };
 }
 
 export interface RealtimeServer {
@@ -23,6 +37,7 @@ export interface RealtimeServer {
   readonly webSocketServer: WebSocketServer;
   readonly activity: ActivityState;
   readonly roster: GroupRoster;
+  readonly guidedNotes: GuidedNotesService;
   listen(port?: number): Promise<number>;
   close(): Promise<void>;
 }
@@ -30,10 +45,28 @@ export interface RealtimeServer {
 export function createRealtimeServer(options: RealtimeServerOptions = {}): RealtimeServer {
   const config = options.config ?? loadConfig();
   const host = options.host ?? '127.0.0.1';
+  const allowedOrigin = options.allowedOrigin ?? ALLOWED_ORIGIN;
   const defaultPort = options.port ?? 3001;
   const activity = new ActivityState();
   const roster = new GroupRoster(config.groups);
-  const hub = new RealtimeHub({ config, activity, roster });
+  let sheetsAdapter = options.guidedNotes?.sheetsAdapter;
+  if (!sheetsAdapter) {
+    let credentials = null;
+    try {
+      credentials = parseGoogleServiceAccountCredentials(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    } catch {
+      // Missing or malformed optional Sheets credentials must not disable Feature 001 login.
+    }
+    sheetsAdapter = createGoogleSheetsAdapter(credentials);
+  }
+  const winningResultsProvider = options.guidedNotes?.winningResultsProvider
+    ?? new UnavailableWinningResultsProvider();
+  const guidedNotes = new GuidedNotesService({
+    activity,
+    sheets: sheetsAdapter,
+    winningResultsProvider,
+  });
+  const hub = new RealtimeHub({ config, activity, roster, guidedNotes });
   const httpServer = createServer((_request, response) => {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     response.end('Not found');
@@ -45,7 +78,7 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
   const stopHeartbeat = new Map<WebSocket, () => void>();
 
   httpServer.on('upgrade', (request, socket, head) => {
-    if (request.headers.origin !== ALLOWED_ORIGIN) {
+    if (request.headers.origin !== allowedOrigin) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       socket.destroy();
       return;
@@ -80,6 +113,7 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
     webSocketServer,
     activity,
     roster,
+    guidedNotes,
     listen(port = defaultPort) {
       return new Promise<number>((resolveListen, reject) => {
         const onError = (error: Error) => {
