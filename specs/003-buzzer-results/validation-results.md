@@ -25,7 +25,7 @@ The Playwright suite covers submit/lock feedback, teacher-only live progress wit
 ## Merge review handoff
 
 - Working branch is `codex-003-buzzer-results`.
-- Automated evidence is recorded above; PR creation and reviewer outcome will be recorded here after the branch is pushed and the PR is opened.
+- PR [#3](https://github.com/ncuyvonne/speckit-buzzer/pull/3) is open against `main` from `codex-003-buzzer-results` (head `fd1a640`). It contains one Feature 003 commit and 42 changed files. Review approval is pending; no merge has been performed.
 - Pre-PR specification/constitution review: submission authorization, BUZZING-only acceptance, first-valid lock, server `receivedOrder`, Unicode-whitespace rejection, teacher-only full progress, student own-progress recovery, ENDED role-filtered results, and the Feature 002 provider boundary match the implemented code and automated coverage. Credentials remain server-side through the existing Feature 002 environment configuration.
 - Constitution quality gates: I–V and VII were checked against the implementation, validation, spec, protocol, provider, and regenerated diagrams. Principle VI awaits PR review.
-- T030 is complete. T032 remains incomplete until the PR is created and reviewed; merge remains a separate follow-up requiring approval.
+- T030 is complete. T032 remains incomplete until review approval and its conclusion are recorded; merging remains a separate follow-up requiring approval.
