@@ -1,0 +1,96 @@
+@startuml
+title 001 角色與階段同步－時序圖
+autonumber
+
+actor 老師
+actor 學生
+participant "老師操作畫面" as TeacherUI
+participant "學生操作畫面" as StudentUI
+participant "HTTP／WebSocket server" as WebSocketServer
+participant "訊息處理器" as Handler
+participant "老師密碼環境設定" as Credentials
+participant "活動狀態" as ActivityState
+participant "有效組別名冊" as GroupRoster
+participant "在線連線" as Connections
+participant "分頁 sessionStorage" as StudentStorage
+
+== 老師連線與登入 ==
+老師 -> TeacherUI : 開啟老師操作畫面
+TeacherUI -> WebSocketServer : HTTP Upgrade（Origin）
+WebSocketServer -> WebSocketServer : 驗證本機 Origin allowlist
+alt Origin 允許
+  WebSocketServer --> TeacherUI : HTTP 101
+  WebSocketServer -> Handler : 接受連線
+  Handler -> Connections : 建立 UNAUTHENTICATED 連線
+  Handler -> ActivityState : 讀取目前階段
+  Handler -> GroupRoster : 讀取有效組別清單
+  Handler --> TeacherUI : activity.snapshot
+  老師 -> TeacherUI : 輸入老師密碼
+  TeacherUI -> Handler : teacher.authenticate
+  Handler -> Connections : 確認目前連線為 UNAUTHENTICATED
+  Handler -> Credentials : 驗證輸入與 TEACHER_PASSWORD
+  alt 密碼已設定且驗證成功
+    Handler -> Connections : 將目前連線設為 TEACHER
+    Handler --> TeacherUI : teacher.authenticated
+    Handler --> TeacherUI : activity.snapshot（最新階段與組別）
+    TeacherUI --> 老師 : 顯示老師控制與目前階段
+  else 密碼錯誤、空白或未設定
+    Handler --> TeacherUI : error（AUTH_INVALID）
+    TeacherUI --> 老師 : 顯示可修正的錯誤訊息
+  end
+else Origin 不允許
+  WebSocketServer --> TeacherUI : HTTP 403（Upgrade 前拒絕）
+  TeacherUI --> 老師 : 顯示「正在重新連線」並重試
+end
+
+ref over TeacherUI,StudentUI : 重整與重連詳見 001-role-phase-sync-sequence-recovery
+
+== 學生加入活動 ==
+學生 -> StudentUI : 開啟活動畫面
+StudentUI -> WebSocketServer : 建立 WebSocket 連線（使用允許的 Origin）
+WebSocketServer -> Handler : 接受連線並建立 UNAUTHENTICATED 角色
+Handler -> Connections : 註冊新連線
+Handler -> ActivityState : 讀取目前階段
+Handler -> GroupRoster : 讀取有效組別清單
+Handler --> StudentUI : activity.snapshot
+StudentUI --> 學生 : 顯示目前階段與有效組別
+學生 -> StudentUI : 選擇有效組別
+StudentUI -> Handler : student.join { groupId, requestId }
+Handler -> Connections : 確認目前連線不是 TEACHER
+Handler -> GroupRoster : 驗證 groupId
+alt 組別有效
+  Handler -> Connections : 設定 STUDENT 角色與 groupId
+  Handler --> StudentUI : student.joined { ok: true, groupId }
+  Handler -> ActivityState : 讀取最新階段
+  Handler --> StudentUI : activity.snapshot
+  StudentUI -> StudentStorage : 處理 student.joined 時保存有效 groupId
+  StudentUI -> StudentUI : 套用最新 snapshot
+  StudentUI --> 學生 : 顯示組別與目前階段
+else 組別無效
+  Handler --> StudentUI : error { code: GROUP_INVALID }
+  StudentUI --> 學生 : 指出如何選擇有效組別
+end
+
+== 老師推進階段並同步 ==
+老師 -> TeacherUI : 切換至下一階段
+TeacherUI -> Handler : activity.advance { from, to, requestId }
+Handler -> Connections : 驗證目前連線為 TEACHER
+alt 目前連線為 TEACHER
+  Handler -> ActivityState : 驗證 from、to 與伺服器目前階段
+  alt 階段轉換有效
+    ActivityState -> ActivityState : 更新至唯一允許的下一階段
+    Handler -> Connections : 廣播 activity.phaseChanged
+    Connections --> TeacherUI : activity.phaseChanged { stage }
+    Connections --> StudentUI : activity.phaseChanged { stage }
+    note over Handler,Connections
+      所有在線畫面在 2 秒內顯示相同階段。
+    end note
+  else 階段轉換無效
+    Handler --> TeacherUI : error（STAGE_CONFLICT）
+    TeacherUI --> 老師 : 顯示錯誤，活動階段保持不變
+  end
+else 目前連線未授權
+  Handler --> TeacherUI : error（AUTH_REQUIRED），活動階段保持不變
+end
+
+@enduml
