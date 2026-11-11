@@ -8,13 +8,13 @@
 
 | Command | Exit | Observed result |
 |---|---:|---|
-| `npm run test` | 0 | Backend 23 test files and 117 tests passed. Frontend Vitest exited 0 and reported no frontend unit test files. |
-| `$env:PLAYWRIGHT_PORT='5179'; $env:PLAYWRIGHT_TEST_ORIGIN='http://127.0.0.1:5179'; $env:PLAYWRIGHT_EXTERNAL_SERVER='1'; npm run test:e2e` | 0 | 30 Playwright tests passed in 34.8 seconds using the local Vite server on port 5179 because port 5173 was occupied. The parameterized teacher-progress case used its default of 3 student connections and measured 43 ms. |
+| `npm run test` | 0 | Frontend Vitest: 1 file / 1 test passed. Backend Vitest: 23 files / 117 tests passed. |
+| `$env:PLAYWRIGHT_PORT='5179'; $env:PLAYWRIGHT_TEST_ORIGIN='http://127.0.0.1:5179'; $env:PLAYWRIGHT_EXTERNAL_SERVER='1'; npm run test:e2e` | 0 | 30 Playwright tests passed in 30.9 seconds using the local Vite server on port 5179 because port 5173 was occupied. The parameterized teacher-progress case used its default of 3 student connections and measured 45 ms. |
 | `npm run typecheck` | 0 | Frontend and backend `tsc --noEmit` passed. |
 | `npm run build` | 0 | Vite production build and backend TypeScript build passed. |
 | `git diff --check` | 0 | No whitespace errors in the diff. Git reported an existing LF-to-CRLF notice for `specs/002-guided-notes-import-export/tasks.md`. |
 
-The Playwright suite covers submit/lock feedback, teacher-only live progress within two seconds for three groups, BUZZING reconnect state, ENDED results, result privacy, reload recovery, and existing Feature 001/002 flows. The Feature 002 provider integration uses `FakeGoogleSheetsAdapter`; no live Sheets credentials were read. The final `npm run test` run also covers the student query protocol, student question-list update after import, and unavailable provider state.
+The Playwright suite covers submit/lock feedback, teacher progress immediately after import and within two seconds, BUZZING reconnect state, ENDED results, result privacy, reload recovery, and existing Feature 001/002 flows. The Feature 002 provider integration uses `FakeGoogleSheetsAdapter`; no live Sheets credentials were read. The final `npm run test` run includes the RealtimeClient regression for preserving a joined student's group after a rejected rebind.
 
 ## Sequential phase-gate validation
 
@@ -34,7 +34,15 @@ Each Playwright phase used port 5179 with `PLAYWRIGHT_EXTERNAL_SERVER=1`. The fu
 |---|---|
 | T033 WebSocket group-binding integration regression and T034 Unicode White_Space unit regression | 2 backend test files, 10 tests passed. U+0085 NEL is rejected as whitespace without consuming an order; accepted answers retain their raw text. |
 | Parameterized teacher-progress smoke run with `PLAYWRIGHT_CLASS_SIZE=3` | 1/1 passed; the latest targeted rerun measured 57 ms from submit to teacher update. The full Playwright run also passed this test at the default size of 3 and measured 43 ms. |
-| T035 representative classroom-load acceptance with `PLAYWRIGHT_CLASS_SIZE=200` | 1/1 passed with one teacher and 200 concurrent student connections (3 UI pages and 197 additional WebSockets); submit-to-teacher update measured 70 ms, below the 2-second target. No exact class size was specified; 200 is the representative safety baseline suggested by the user, not a claim about the user's actual class size. Set `PLAYWRIGHT_CLASS_SIZE` to another count when needed. |
+| T035 representative classroom-load acceptance with `PLAYWRIGHT_CLASS_SIZE=200` | 1/1 passed with one teacher and 200 concurrent student connections (3 UI pages and 197 additional WebSockets); after Phase 8 fixes, submit-to-teacher update measured 37 ms, below the 2-second target. No exact class size was specified; 200 is the representative safety baseline suggested by the user, not a claim about the user's actual class size. Set `PLAYWRIGHT_CLASS_SIZE` to another count when needed. |
+
+## Phase 8 — Review follow-up
+
+| Scope | Result |
+|---|---|
+| T036 teacher progress immediately after import | Red: before the fix, the E2E test could not find “題目 1” after import. Green: after broadcasting teacher progress on successful import, the test sees all 3 imported questions and each group's not-submitted status before any student answer. |
+| T038 joined student keeps role and group after rejected rebind | Red: before the fix, the RealtimeClient unit test observed `UNAUTHENTICATED` and a cleared selection after `GROUP_INVALID`. Green: after limiting selection clearing to unauthenticated connections, 1/1 unit test passed and the client retains the original group. |
+| Full regression after Phase 8 | `npm run test`: frontend 1/1 and backend 117/117; `npm run test:e2e`: 30/30 in 30.9 seconds; `npm run typecheck`: passed; `npm run build`: passed. The separate 200-connection teacher-progress run passed at 37 ms. |
 
 ## PlantUML cross-check
 

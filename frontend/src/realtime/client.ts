@@ -366,7 +366,7 @@ export class RealtimeClient {
         this.buzzerResults.applyError(payload.code as ErrorCode, payload.message, pending.questionId);
         this.#pendingBuzzerRequests.delete(requestId);
       }
-      if (payload.code === 'GROUP_INVALID') {
+      if (payload.code === 'GROUP_INVALID' && this.store.getSnapshot().role !== 'STUDENT') {
         this.#studentSelection.clear();
         this.store.update({ role: 'UNAUTHENTICATED', selectedGroupId: null });
       }

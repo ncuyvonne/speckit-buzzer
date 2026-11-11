@@ -192,3 +192,10 @@ T004 frontend/tests/e2e/buzzer-results-submit.spec.ts
 - [X] T033 CRITICAL：在 `student.join` 維持已加入學生的伺服器組別綁定，拒絕同一連線以不同 `groupId` 重新綁定；加入 WebSocket 整合回歸測試，確認重新加入不會改變本組進度或結果可見範圍 per Constitution IV, FR-001, FR-016, US3/AC4 (contradicts)
 - [X] T034 HIGH：使用 Unicode `White_Space` 定義驗證答案至少含一個非空白字元（涵蓋 U+0085 NEL），接受時保留原始字串，並加入單元回歸測試 per FR-004, SC-003, T001 (partial)
 - [X] T035 HIGH：將 teacher-progress Playwright 負載測試參數化為同時連線學生人數；未指定實際班級人數時以 200 人作代表性安全驗收基準，驗證提交至老師更新不超過 2 秒，並在 validation-results.md 記錄連線人數與實測時間；可用 `PLAYWRIGHT_CLASS_SIZE` 覆寫 per SC-004, T013 (partial)
+
+## Phase 8: Review Follow-up
+- [X] T036 [P] 在 `frontend/tests/e2e/buzzer-results-teacher-progress.spec.ts` 加入回歸測試：老師登入後匯入題目，在任何學生提交前即可看到每題及所有組別的未提交狀態 per FR-012, US2 (review finding)
+- [X] T037 在 `backend/src/realtime/handler.ts` 與 `specs/003-buzzer-results/contracts/realtime-websocket.md` 修正成功匯入後的教師進度刷新，讓所有已驗證教師連線取得新題目清單對應的完整進度；先通過 T036 per FR-012, US2 (review finding)
+- [X] T038 [P] 在 `frontend/tests/unit/realtime-client.test.ts` 加入回歸測試：已加入學生收到組別變更 `GROUP_INVALID` 後，仍保留伺服器綁定的角色、組別及分頁儲存值 per FR-001, FR-016 (review finding)
+- [X] T039 在 `frontend/src/realtime/client.ts` 調整 `GROUP_INVALID` 處理，只在尚未加入有效組別的連線清除組別選擇；已加入學生收到變更組別拒絕時保留目前角色和組別；先通過 T038 per FR-001, FR-016 (review finding)
+- [X] T040 在 `specs/003-buzzer-results/validation-results.md` 記錄 Phase 8 紅綠測試、完整測試結果及審查發現修正 per Constitution III, V (review finding)

@@ -107,7 +107,7 @@ After reconnect and join while the Activity is ENDED, the frontend requests buzz
 
 ### buzzerResults.teacherProgress
 
-有效答案接受後傳給所有已驗證教師連線；老師驗證登入後亦取得全量初始快照。
+有效答案接受或成功匯入新題號後，傳給所有已驗證教師連線；老師驗證登入後亦取得全量初始快照。
 
 ```json
 {

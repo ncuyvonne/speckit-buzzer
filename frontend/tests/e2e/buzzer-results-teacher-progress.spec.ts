@@ -62,6 +62,10 @@ test('teacher sees full live progress for the classroom within two seconds', asy
   await teacher.getByLabel('工作表分頁名稱').fill('工作表1');
   await teacher.getByRole('button', { name: '匯入題號' }).click();
   await expect(teacher.getByText('題數：3')).toBeVisible();
+  await expect(teacher.getByRole('heading', { name: /^題目 / })).toHaveCount(3);
+  for (const groupId of ['1', '2', '3']) {
+    await expect(teacher.getByText(`組別 ${groupId}：尚未提交`, { exact: true })).toHaveCount(3);
+  }
 
   const studentUiCount = Math.min(classroomSize, 3);
   const students = await Promise.all(Array.from({ length: studentUiCount }, async (_, index) => {

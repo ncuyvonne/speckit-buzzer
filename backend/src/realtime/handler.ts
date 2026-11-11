@@ -211,6 +211,7 @@ export class RealtimeHub {
             payload: result,
           });
           this.#broadcastStudentQuestionLists();
+          this.#broadcastTeacherProgress();
         } catch (error) {
           if (error instanceof GuidedNotesServiceError) {
             this.#sendError(context, error.code, message.requestId, error.message);
