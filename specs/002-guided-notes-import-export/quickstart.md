@@ -66,7 +66,7 @@ Also check unauthenticated/student connections, import outside PREPARING, and ex
 
 Before implementing the adapter, time import and export of a disposable worksheet with at most 100 questions and a grid no larger than 1,000 rows × 26 columns under the SC-006 reference conditions: no quota/transient API errors and no injected network delay. Each operation must complete and report a result in 10 seconds or less. Also include a blank-heavy worksheet to check the full-grid scan; larger dimensions remain supported and must have their dimensions and observed latency recorded, but are outside the fixed 10-second benchmark profile.
 
-The live credential and spreadsheet PoC is pending; no Google project, service account or worksheet was provided during planning. Record the actual command, elapsed time and result during implementation; do not mark it passed from fake-adapter tests alone.
+At planning time, live credential and spreadsheet PoC evidence was pending. The implementation-phase records below document the authorized disposable-sheet run, its command, and measured results; fake-adapter tests alone are not sufficient to mark that gate passed.
 
 ## Current implementation gate status (2026-11-11)
 
@@ -143,7 +143,7 @@ The live credential and spreadsheet PoC is pending; no Google project, service a
 - Regenerated the changed PlantUML PNGs with the existing Java 8-compatible PlantUML JAR. Visually inspected the updated export sequence diagram. `node --check backend/scripts/guided-notes-service-benchmark.mjs` and `git diff --check` passed.
 - `$speckit-analyze` after convergence edits — no findings. Coverage: 17 FR + 8 buildable SC and 16 acceptance scenarios mapped to tasks; 43 task IDs; 100% requirement coverage; no constitution alignment issues, ambiguities, duplications, or unmapped tasks.
 - Final `$speckit-converge` for `specs/002-guided-notes-import-export/` — converged with no remaining implementation or documentation tasks. No app source changed during convergence, so the Phase 6 typecheck, Vitest, E2E, build and live benchmark results above remain the current application evidence.
-- T039 is complete. T040 remains the PR submission/review gate; the PR must remain unmerged until review is complete.
+- T039 is complete. At the convergence checkpoint, T040 remained the PR submission/review gate; the PR submission and first review-correction cycle are now recorded below.
 
 
 ## PR #2 review correction validation (2026-11-11)
@@ -157,4 +157,4 @@ The live credential and spreadsheet PoC is pending; no Google project, service a
 - The parser unit case confirms that duplicate labels on a row without both required headers and explanatory prose mentioning the labels are ignored when one valid candidate header row exists. The export integration case passes with the header on row 5, question IDs in column C, answers in column E, and adjacent values/notes unchanged.
 - The delayed-write integration case confirms that expiry of the 10-second deadline returns SHEET_WRITE_UNCONFIRMED, does not cancel the pending batch, holds the operation lock until settlement, and allows the pending write to complete afterward. The Playwright error case checks the teacher-facing warning that the batch may already have applied or may still finish.
 - The revised import and export sequence PNGs were regenerated with the Java 8-compatible PlantUML JAR and visually inspected.
-- T044–T047 are complete. T048 remains in progress until the updated branch and PR description are pushed and the follow-up review request is submitted. PR #2 must remain open and unmerged while review is pending.
+- T044–T048 are complete. Review fixes were pushed to PR #2's original branch, the PR description now includes the Node 24 results and quickstart evidence, and mini-duan's follow-up review was requested. PR #2 remains open and unmerged while that review is pending.
