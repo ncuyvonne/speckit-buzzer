@@ -1,0 +1,89 @@
+@startuml
+title 002 Guided Notes 寫回 - 時序圖
+actor "老師" as Teacher
+participant "課堂介面" as UI
+participant "RealtimeHub" as Hub
+participant "GuidedNotesService" as Export
+participant "WinningResultsProvider" as Results
+participant "GoogleSheetsAdapter" as Adapter
+participant "Google Sheets API" as Sheet
+
+Teacher -> UI : 確認寫回答案
+UI -> Hub : guidedNotes.export
+Hub -> Hub : 驗證老師角色及 ENDED
+alt 未登入／活動未結束
+  Hub --> UI : AUTH_REQUIRED／STAGE_CONFLICT
+else 已授權
+  Hub -> Export : exportAnswers()
+  Export -> Export : 取得操作鎖；確認已有匯入工作表
+  alt 尚未匯入工作表
+    Export --> Hub : WORKSHEET_NOT_IMPORTED（不呼叫 Results／Sheets）
+    Hub --> UI : 指示先匯入工作表
+  else 已匯入
+    Export -> Results : getSnapshot()
+    alt 結果來源不可用
+      Results --> Export : UNAVAILABLE
+      Export --> Hub : WINNING_RESULTS_UNAVAILABLE
+      Hub --> UI : 顯示結果尚未就緒；不寫入 Sheet
+    else READY（答案可為空）
+      Results --> Export : 伺服器端成功答案
+      Export -> Adapter : resolveWorksheet(id, title)
+      Adapter -> Sheet : 重新讀取 metadata
+      Sheet --> Adapter : 當前 sheetId／grid 尺寸
+      Adapter --> Export : ResolvedWorksheet
+      Export -> Adapter : readWorksheet(resolved)
+      Adapter -> Sheet : 讀取目前 grid
+      Sheet --> Adapter : 最新標題、題號與作答值
+      Adapter --> Export : WorksheetGrid
+      Export -> Export : 動態定位所有活動題號與目標作答格
+      alt 標題／目標題號無效
+        Export --> Hub : SHEET_LAYOUT_INVALID／QUESTION_TARGET_INVALID
+        Hub --> UI : 顯示修正訊息；不開始寫入
+      else 所有目標唯一
+        Export -> Adapter : batchWriteValues（每題一格）
+        Adapter -> Sheet : 單一 values.batchUpdate（RAW；答案或空字串）
+        Sheet --> Adapter : 已套用／確定未套用／回應不明
+        loop 僅前次確定未套用且仍有額度時重試，最多 2 次（250 ms、500 ms；10 秒 deadline）
+          Export -> Adapter : 重送同一原子批次
+          Adapter -> Sheet : values.batchUpdate
+          Sheet --> Adapter : 已套用／確定未套用／回應不明
+        end
+        alt 任一次批次確認成功
+          Sheet --> Adapter : 已套用
+          Adapter --> Export : 已確認套用
+          Export --> Hub : guidedNotes.exported
+          Hub --> UI : 顯示寫回與清空數量
+        else 每次嘗試都確定未套用
+          Export --> Hub : SHEET_WRITE_FAILED
+          Hub --> UI : 顯示權限／受保護儲存格修正指引
+        else 任一次寫入回應不明且期限尚有餘裕
+          Adapter --> Export : ambiguous outcome
+          Export -> Adapter : readWorksheet（不盲目重送）
+          Adapter -> Sheet : 讀回所有目標格
+          Sheet --> Adapter : 最新目標格值
+          Adapter --> Export : read-back result
+          alt 全部符合預期
+            Export --> Hub : guidedNotes.exported
+            Hub --> UI : 顯示已確認寫回
+          else 全部保持原值
+            Export --> Hub : SHEET_WRITE_FAILED
+            Hub --> UI : 顯示未套用；檢查後可重試
+          else 讀回失敗、混合值或 read-back 期限耗盡
+            Export --> Hub : SHEET_WRITE_UNCONFIRMED
+            Hub --> UI : 提醒先檢查試算表；不顯示成功
+          end
+        else 10 秒期限於回應／read-back 前耗盡
+          Export --> Hub : SHEET_WRITE_UNCONFIRMED
+          Hub --> UI : 提醒先檢查試算表；不顯示成功
+        end
+      end
+    end
+  end
+end
+
+note over Export,Sheet
+只有 READY 的空答案清單代表無人成功，
+這些題目的目標格清空；非目標格不變。
+整個操作期限 10 秒，含讀取重試及 read-back。
+end note
+@enduml

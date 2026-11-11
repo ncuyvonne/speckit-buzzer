@@ -1,0 +1,54 @@
+@startuml
+title 002 Guided Notes 匯入 - 時序圖
+actor "老師" as Teacher
+participant "課堂介面" as UI
+participant "RealtimeHub" as Hub
+participant "GuidedNotesService" as Import
+participant "GoogleSheetsAdapter" as Adapter
+participant "Google Sheets API" as Sheet
+participant "ActivityState" as Activity
+
+Teacher -> UI : 選擇學習單與工作表
+UI -> Hub : guidedNotes.import
+Hub -> Hub : 驗證老師角色及 PREPARING
+alt 未登入／非準備階段
+  Hub --> UI : AUTH_REQUIRED／STAGE_CONFLICT
+else 已授權
+  Hub -> Import : importWorksheet(url, worksheetTitle)
+  Import -> Import : 取得操作鎖、啟動 10 秒 deadline、驗證參照
+  Import -> Adapter : resolveWorksheet(id, title)
+  Adapter -> Sheet : 讀取分頁 metadata 及 grid 尺寸
+  Sheet --> Adapter : sheetId、rowCount、columnCount
+  Adapter --> Import : ResolvedWorksheet
+  Import -> Adapter : readWorksheet(resolved)
+  Adapter -> Sheet : 讀取完整 grid（FORMATTED_VALUE）
+  Sheet --> Adapter : 顯示值
+  Adapter --> Import : WorksheetGrid
+  loop 暫時性讀取錯誤，最多重試 2 次（250 ms、500 ms；共用 10 秒期限）
+    Import -> Adapter : 重試可重複讀取
+    Adapter -> Sheet : metadata／grid values request
+    Sheet --> Adapter : 結果或錯誤
+  end
+  alt 讀取成功（首次或重試後）
+    Import -> Import : 動態找唯一標題列與「題號」「作答」欄
+    alt 標題缺漏、重複或無法唯一定位
+      Import --> Hub : SHEET_LAYOUT_INVALID
+      Hub --> UI : 顯示修正訊息；Activity 不變
+    else 標題有效
+      Import -> Import : 保留順序；略過空列；驗證唯一且 1–100 題號
+      alt 重複、零題或超過 100 題
+        Import --> Hub : QUESTION_IDS_INVALID
+        Hub --> UI : 顯示題號錯誤；Activity 不變
+      else 題號有效
+        Import -> Activity : 再驗證 PREPARING，原子替換 worksheet 與 questions
+        Activity --> Import : 匯入完成
+        Import --> Hub : questionIds、questionCount
+        Hub --> UI : guidedNotes.imported
+      end
+    end
+  else 讀取重試耗盡或 10 秒期限屆滿
+    Import --> Hub : SHEET_READ_FAILED
+    Hub --> UI : 顯示網路／存取修正訊息；Activity 不變
+  end
+end
+@enduml

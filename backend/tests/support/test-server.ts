@@ -1,10 +1,17 @@
 import { loadConfig } from '../../src/config.js';
+import type { GoogleSheetsAdapter } from '../../src/integrations/google-sheets/types.js';
+import type { WinningResultsProvider } from '../../src/guided-notes/service.js';
 import { createRealtimeServer } from '../../src/server.js';
 
 export interface TestServerOptions {
   readonly port?: number;
   readonly teacherPassword?: string | null;
   readonly groupIds?: string;
+  readonly allowedOrigin?: string;
+  readonly guidedNotes?: {
+    readonly sheetsAdapter: GoogleSheetsAdapter;
+    readonly winningResultsProvider: WinningResultsProvider;
+  };
 }
 
 export interface TestServerHandle {
@@ -27,6 +34,8 @@ export async function startTestServer(options: TestServerOptions = {}): Promise<
     config: loadConfig(env),
     host: '127.0.0.1',
     port: options.port ?? 3001,
+    allowedOrigin: options.allowedOrigin,
+    guidedNotes: options.guidedNotes,
   });
   const port = await app.listen(options.port ?? 3001);
 

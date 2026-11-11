@@ -15,6 +15,61 @@ export class ConfigurationError extends Error {
   }
 }
 
+export interface GoogleServiceAccountCredentials {
+  readonly type: 'service_account';
+  readonly project_id?: string;
+  readonly client_email: string;
+  readonly private_key: string;
+}
+
+/**
+ * Parse the backend-only service-account environment value without ever
+ * echoing the credential or JSON parser details in an error message.
+ */
+export function parseGoogleServiceAccountCredentials(
+  serialized: string | undefined,
+): GoogleServiceAccountCredentials {
+  if (serialized === undefined || serialized.trim().length === 0) {
+    throw new ConfigurationError('GOOGLE_SERVICE_ACCOUNT_JSON is not configured.');
+  }
+
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(serialized);
+  } catch {
+    throw new ConfigurationError('GOOGLE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON.');
+  }
+
+  if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+    throw new ConfigurationError('GOOGLE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON.');
+  }
+
+  const record = candidate as Record<string, unknown>;
+  const clientEmail = record.client_email;
+  const privateKey = record.private_key;
+  const projectId = record.project_id;
+  const validPrivateKey = typeof privateKey === 'string'
+    && privateKey.includes('-----BEGIN PRIVATE KEY-----')
+    && privateKey.includes('-----END PRIVATE KEY-----');
+
+  if (
+    record.type !== 'service_account'
+    || typeof clientEmail !== 'string'
+    || clientEmail.trim().length === 0
+    || !validPrivateKey
+    || (projectId !== undefined && (typeof projectId !== 'string' || projectId.trim().length === 0))
+  ) {
+    throw new ConfigurationError('GOOGLE_SERVICE_ACCOUNT_JSON must contain valid service-account JSON.');
+  }
+
+  return Object.freeze({
+    type: 'service_account',
+    ...(typeof projectId === 'string' ? { project_id: projectId } : {}),
+    client_email: clientEmail,
+    private_key: privateKey,
+  });
+}
+
 function serializedRequestBytes(type: string, payload: Record<string, unknown>): number {
   return Buffer.byteLength(
     JSON.stringify({ type, requestId: MAX_REQUEST_ID, payload }),

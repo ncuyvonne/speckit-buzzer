@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import type { AppConfig } from '../config.js';
 import { ActivityState } from '../domain/activity-state.js';
 import { GroupRoster } from '../domain/group-roster.js';
+import { GuidedNotesService, GuidedNotesServiceError } from '../guided-notes/service.js';
 import { isTeacherPasswordValid } from '../domain/teacher-auth.js';
 import { decodeClientMessage, encodeError, type ClientMessage, type ErrorCode } from './protocol.js';
 
@@ -17,6 +18,7 @@ export interface RealtimeHandlerOptions {
   readonly config: AppConfig;
   readonly activity: ActivityState;
   readonly roster: GroupRoster;
+  readonly guidedNotes: GuidedNotesService;
 }
 
 function send(socket: WebSocket, message: unknown): void {
@@ -27,12 +29,14 @@ export class RealtimeHub {
   readonly #config: AppConfig;
   readonly #activity: ActivityState;
   readonly #roster: GroupRoster;
+  readonly #guidedNotes: GuidedNotesService;
   readonly #connections = new Set<ConnectionContext>();
 
   constructor(options: RealtimeHandlerOptions) {
     this.#config = options.config;
     this.#activity = options.activity;
     this.#roster = options.roster;
+    this.#guidedNotes = options.guidedNotes;
   }
 
   attach(socket: WebSocket): () => void {
@@ -45,7 +49,7 @@ export class RealtimeHub {
         this.#sendError(context, decoded.code, decoded.requestId);
         return;
       }
-      this.#handle(context, decoded.message);
+      void this.#handle(context, decoded.message);
     };
     const detach = () => {
       socket.off('message', onMessage);
@@ -60,7 +64,7 @@ export class RealtimeHub {
     return detach;
   }
 
-  #handle(context: ConnectionContext, message: ClientMessage): void {
+  async #handle(context: ConnectionContext, message: ClientMessage): Promise<void> {
     switch (message.type) {
       case 'teacher.authenticate': {
         if (context.role !== 'UNAUTHENTICATED') {
@@ -78,7 +82,7 @@ export class RealtimeHub {
           requestId: message.requestId,
           payload: { ok: true },
         });
-        this.#sendSnapshot(context.socket);
+        this.#sendSnapshot(context);
         return;
       }
       case 'activity.advance': {
@@ -114,22 +118,84 @@ export class RealtimeHub {
           requestId: message.requestId,
           payload: { ok: true, groupId: context.groupId },
         });
-        this.#sendSnapshot(context.socket);
+        this.#sendSnapshot(context);
+        return;
+      }
+      case 'guidedNotes.import': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (this.#activity.stage !== 'PREPARING') {
+          this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+          return;
+        }
+
+        try {
+          const result = await this.#guidedNotes.importWorksheet(message.payload);
+          send(context.socket, {
+            type: 'guidedNotes.imported',
+            requestId: message.requestId,
+            payload: result,
+          });
+        } catch (error) {
+          if (error instanceof GuidedNotesServiceError) {
+            this.#sendError(context, error.code, message.requestId, error.message);
+          } else {
+            this.#sendError(context, 'SHEET_READ_FAILED', message.requestId);
+          }
+        }
+        return;
+      }
+      case 'guidedNotes.export': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (this.#activity.stage !== 'ENDED') {
+          this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+          return;
+        }
+
+        try {
+          const result = await this.#guidedNotes.exportAnswers();
+          send(context.socket, {
+            type: 'guidedNotes.exported',
+            requestId: message.requestId,
+            payload: result,
+          });
+        } catch (error) {
+          if (error instanceof GuidedNotesServiceError) {
+            this.#sendError(context, error.code, message.requestId, error.message);
+          } else {
+            this.#sendError(context, 'SHEET_WRITE_FAILED', message.requestId);
+          }
+        }
         return;
       }
     }
   }
 
-  #sendSnapshot(socket: WebSocket): void {
-    send(socket, {
+  #sendSnapshot(context: ConnectionContext): void {
+    send(context.socket, {
       type: 'activity.snapshot',
       payload: { stage: this.#activity.stage, groups: this.#roster.ids },
     });
+    if (context.role === 'TEACHER') {
+      send(context.socket, {
+        type: 'guidedNotes.snapshot',
+        payload: {
+          worksheetTitle: this.#activity.worksheet?.worksheetTitle ?? null,
+          questionIds: this.#activity.questions.map((question) => question.questionId),
+          questionCount: this.#activity.questionCount,
+        },
+      });
+    }
   }
 
-  #sendError(context: ConnectionContext, code: ErrorCode, requestId?: string): void {
+  #sendError(context: ConnectionContext, code: ErrorCode, requestId?: string, message?: string): void {
     if (context.socket.readyState === WebSocket.OPEN) {
-      context.socket.send(encodeError(code, requestId));
+      context.socket.send(encodeError(code, requestId, message));
     }
   }
 }

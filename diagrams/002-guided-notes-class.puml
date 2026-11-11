@@ -1,0 +1,119 @@
+@startuml
+title 002 Guided Notes 匯入與匯出 - 類別圖
+
+class RealtimeHub {
+  -connections: ConnectionContext[]
+  +dispatch guidedNotes.import/export()
+}
+
+class ConnectionContext {
+  role: TEACHER | STUDENT | UNAUTHENTICATED
+}
+
+class GuidedNotesService {
+  -activeOperation: IMPORT | EXPORT | null
+  +importWorksheet(command)
+  +exportAnswers()
+  -runExclusive(operation, deadline=10s)
+}
+
+class ActivityState {
+  stage: PREPARING | BUZZING | ENDED
+  worksheet: WorksheetReference | null
+  questions: Question[]
+  +replaceGuidedNotesImport(worksheet, questions)
+}
+
+class WorksheetReference {
+  spreadsheetId
+  sheetId
+  worksheetTitle
+}
+
+class Question {
+  questionId
+  displayOrder
+  sourceRowAtImport
+}
+
+class ResolvedWorksheet {
+  worksheet: WorksheetReference
+  rowCount
+  columnCount
+}
+
+class WorksheetGrid {
+  values: string[][]
+}
+
+class AnswerCellWrite {
+  questionId
+  rowNumber
+  answerColumnNumber
+  value
+}
+
+interface GoogleSheetsAdapter {
+  resolveWorksheet(spreadsheetId, worksheetTitle)
+  readWorksheet(resolved)
+  batchWriteValues(resolved, writes)
+}
+
+interface WinningResultsProvider {
+  getSnapshot(): Promise<WinningResultsSnapshot>
+}
+
+class UnavailableWinningResultsProvider {
+  getSnapshot() = UNAVAILABLE
+}
+
+class WinningResultsSnapshot {
+  status: READY | UNAVAILABLE
+  answers: WinningAnswer[]
+}
+
+class WinningAnswer {
+  questionId
+  groupId
+  answerText
+}
+
+RealtimeHub "1" o-- "0..*" ConnectionContext
+RealtimeHub --> GuidedNotesService : authorizes and dispatches
+GuidedNotesService --> ActivityState : validates and reads/commits
+ActivityState "1" o-- "0..*" Question
+ActivityState "1" --> "0..1" WorksheetReference
+GuidedNotesService --> GoogleSheetsAdapter : reads and writes
+GoogleSheetsAdapter --> ResolvedWorksheet
+GoogleSheetsAdapter --> WorksheetGrid
+GoogleSheetsAdapter --> AnswerCellWrite
+GuidedNotesService --> WinningResultsProvider
+UnavailableWinningResultsProvider ..|> WinningResultsProvider
+WinningResultsProvider --> WinningResultsSnapshot : supplies
+WinningResultsSnapshot "1" o-- "0..*" WinningAnswer
+
+note right of Question
+questionId is preserved as displayed.
+sourceRowAtImport is informational;
+export finds current rows by ID.
+end note
+
+note bottom of WorksheetGrid
+Header row and both columns are
+discovered on every import/export.
+The layout is transient, not saved
+as Activity state.
+end note
+
+note right of WinningResultsSnapshot
+READY with an empty answer list means
+there are no winners. UNAVAILABLE
+blocks export before any sheet write.
+end note
+
+note bottom of GuidedNotesService
+One external operation at a time.
+10-second deadline includes retries
+and ambiguous-write read-back.
+end note
+@enduml
