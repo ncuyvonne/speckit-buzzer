@@ -33,35 +33,44 @@ test('same tab restores its group after reload and reconnect in all stages witho
   expect(await page.evaluate((key) => sessionStorage.getItem(key), SELECTION_KEY)).toBe('1');
 
   await page.clock.fastForward(365 * 24 * 60 * 60 * 1_000);
-  await page.reload();
-  await waitForConnected(page);
-  await expect(page.getByText('已加入組別：1')).toBeVisible();
-  await expect(page.getByText('活動階段：準備中')).toBeVisible();
 
   const teacher = await page.context().newPage();
   await teacher.goto('/');
   await waitForConnected(teacher);
   await loginTeacher(teacher);
 
-  backend.disconnectClients();
-  await expect(page.getByText('已加入組別：1')).toBeVisible();
-  await reconnectTeacher(teacher);
-  await teacher.getByRole('button', { name: '開始搶答' }).click();
-  await expect(page.getByText('活動階段：搶答中')).toBeVisible();
+  for (const [stage, nextAction] of [
+    ['準備中', '開始搶答'],
+    ['搶答中', '結束活動'],
+    ['已結束', null],
+  ] as const) {
+    const currentStage = page.getByText(`活動階段：${stage}`);
+    const joinedGroup = page.getByText('已加入組別：1');
+    await expect(currentStage).toBeVisible();
 
-  backend.disconnectClients();
-  await expect(page.getByText('已加入組別：1')).toBeVisible();
-  await reconnectTeacher(teacher);
-  await teacher.getByRole('button', { name: '結束活動' }).click();
-  await expect(page.getByText('活動階段：已結束')).toBeVisible();
+    await test.step(`${stage}: reload restores the group and phase`, async () => {
+      await page.reload();
+      await waitForConnected(page);
+      await expect(joinedGroup).toBeVisible();
+      await expect(currentStage).toBeVisible();
+    });
 
-  backend.disconnectClients();
-  await expect(page.getByText('已加入組別：1')).toBeVisible();
-  await expect(page.getByText('活動階段：已結束')).toBeVisible();
-  await page.reload();
-  await waitForConnected(page);
-  await expect(page.getByText('已加入組別：1')).toBeVisible();
-  await expect(page.getByText('活動階段：已結束')).toBeVisible();
+    await test.step(`${stage}: reconnect restores the group and phase`, async () => {
+      const newConnection = page.waitForEvent('websocket', {
+        predicate: (socket) => new URL(socket.url()).pathname === '/ws',
+      });
+      backend.disconnectClients();
+      await newConnection;
+      await waitForConnected(page);
+      await expect(joinedGroup).toBeVisible();
+      await expect(currentStage).toBeVisible();
+    });
+
+    if (nextAction !== null) {
+      await reconnectTeacher(teacher);
+      await teacher.getByRole('button', { name: nextAction }).click();
+    }
+  }
   await teacher.close();
 });
 
@@ -81,12 +90,23 @@ test('selection is tab-scoped and a reconnecting same-group student does not dis
   await waitForConnected(teacher);
   await loginTeacher(teacher);
 
+  let allowReconnect = false;
+  await page.routeWebSocket('**/ws', (socket) => {
+    if (allowReconnect) socket.connectToServer();
+    else void socket.close({ code: 1012, reason: 'test offline' });
+  });
   backend.disconnectFirstClient();
-  await expect(page.getByText('已加入組別：1')).toBeVisible();
-  await expect(peer.getByText('已加入組別：1')).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText('正在重新連線');
   await teacher.getByRole('button', { name: '開始搶答' }).click();
-  await expect(page.getByText('活動階段：搶答中')).toBeVisible();
   await expect(peer.getByText('活動階段：搶答中')).toBeVisible();
+  await expect(peer.getByText('已加入組別：1')).toBeVisible();
+  await expect(page.getByText('已加入組別：1')).toHaveCount(0);
+
+  allowReconnect = true;
+  await waitForConnected(page);
+  await expect(page.getByText('已加入組別：1')).toBeVisible();
+  await expect(page.getByText('活動階段：搶答中')).toBeVisible();
+  await expect(peer.getByText('已加入組別：1')).toBeVisible();
   await teacher.close();
   await peer.close();
 });

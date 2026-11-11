@@ -81,9 +81,9 @@ frontend/
 │   ├── state/
 │   │   ├── activity.ts
 │   │   └── student-selection.ts
-│   └── App.tsx
+│   ├── App.tsx
+│   └── main.tsx
 └── tests/
-    ├── components/
     └── e2e/
 
 backend/
@@ -100,7 +100,8 @@ backend/
 │       └── heartbeat.ts
 └── tests/
     ├── unit/
-    └── integration/
+    ├── integration/
+    └── support/
 
 diagrams/
 ├── 001-role-phase-sync-component.puml
@@ -113,10 +114,10 @@ diagrams/
 └── 001-role-phase-sync-sequence-recovery.png
 ```
 
-**Structure Decision**: Use a small npm-workspaces repository with separate `frontend` and
-`backend` packages. The components map to the browser views and WebSocket client, the local server
-and message handler, and backend authentication, activity, roster, and connection state. The project
-currently has no application source tree; these paths are the proposed implementation layout.
+**Structure Decision**: The repository uses npm workspaces with separate `frontend` and `backend`
+packages. `frontend/src/` contains the browser views, WebSocket client, and client state.
+`backend/src/` contains the local server, message handler, and logic for teacher authentication,
+activity state, the group roster, and connection state.
 
 ## Diagram and Contract Alignment
 

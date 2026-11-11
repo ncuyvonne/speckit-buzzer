@@ -200,3 +200,19 @@ phase changes. Add US3 next for refresh/reconnect recovery.
 - Tests are listed before each story's implementation; verify the expected failure before implementing the behavior.
 - After each user story, run its targeted checks before beginning the next story phase.
 - Final test results must report actual commands and outcomes; do not mark unrun checks as passing.
+
+## Phase 7: Convergence
+
+- [x] T039 [CRITICAL] Update the stale current-state statement in `specs/001-role-phase-sync/plan.md` to reflect that the planned frontend/backend source tree now exists while preserving the architecture decisions, per Constitution V and plan: Structure Decision (contradicts).
+
+## Phase 8: Convergence
+
+- [x] T040 [HIGH] Display the teacher's `STAGE_CONFLICT` response with its corrective message in the UI, and verify rejected stale, skipped, or backward transitions leave the displayed server stage unchanged, per FR-009, SC-005 and Edge Cases (partial).
+
+## Phase 9: Convergence
+
+- [x] T041 [HIGH] Surface `AUTH_REQUIRED` feedback in the appropriate user view and add an end-to-end check that unauthorized phase commands show login guidance while leaving the activity stage unchanged, per FR-009, SC-005 and Constitution I (partial).
+
+## Phase 10: Convergence
+
+- [x] T042 [HIGH] On `AUTH_REQUIRED`, clear the local `TEACHER` role and return the view to password login while preserving student role and selection state; add an end-to-end check that the rejected phase request leaves the stage unchanged and correct-password reauthentication restores teacher controls, per FR-001, FR-009, SC-005 and US1/AC1 (partial).

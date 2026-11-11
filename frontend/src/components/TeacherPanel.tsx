@@ -29,6 +29,7 @@ export function TeacherPanel({ role, stage, connected, error, onLogin, onAdvance
     return (
       <section aria-labelledby="teacher-panel-title">
         <h2 id="teacher-panel-title">老師控制台</h2>
+        {error && <p role="alert">{error}</p>}
         {nextStage && stage && (
           <button type="button" disabled={!connected} onClick={() => onAdvance(stage, nextStage)}>
             {NEXT_ACTION[stage]}

@@ -40,7 +40,7 @@ alt Origin 允許
   end
 else Origin 不允許
   WebSocketServer --> TeacherUI : HTTP 403（Upgrade 前拒絕）
-  TeacherUI --> 老師 : 顯示連線失敗
+  TeacherUI --> 老師 : 顯示「正在重新連線」並重試
 end
 
 ref over TeacherUI,StudentUI : 重整與重連詳見 001-role-phase-sync-sequence-recovery

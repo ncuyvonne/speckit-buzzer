@@ -186,6 +186,9 @@ export class RealtimeClient {
         this.#studentSelection.clear();
         this.store.update({ role: 'UNAUTHENTICATED', selectedGroupId: null });
       }
+      if (payload.code === 'AUTH_REQUIRED' && this.store.getSnapshot().role === 'TEACHER') {
+        this.store.update({ role: 'UNAUTHENTICATED', selectedGroupId: null });
+      }
       this.store.update({
         serverError: { code: payload.code as ErrorCode, message: payload.message },
       });

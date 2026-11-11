@@ -28,7 +28,7 @@ component "本機 Vite /ws 代理" as ViteProxy
 學生 --> StudentUI : 選組、查看階段
 TeacherUI --> RealtimeClient : 登入與階段操作
 StudentUI --> RealtimeClient : 加入與查看同步狀態
-StudentUI <--> StudentSelection : 保存 tab-scoped groupId
+RealtimeClient <--> StudentSelection : 讀取、保存或清除分頁的 groupId
 RealtimeClient --> ViteProxy : 同源 /ws（登入、推進、加入、重連）
 ViteProxy <--> RealtimeServer : 轉送 WebSocket 與原始 Origin
 RealtimeServer --> Handler : Origin 驗證後路由訊息
@@ -54,7 +54,8 @@ end note
 
 note right of StudentSelection
   只保存學生組別 ID；
-  新連線後由伺服器重新驗證。
+  新連線收到快照後讀取，
+  再由伺服器重新驗證。
 end note
 
 @enduml

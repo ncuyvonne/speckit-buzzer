@@ -12,6 +12,13 @@ const STAGE_LABELS = {
 export default function App() {
   const [client] = useState(() => new RealtimeClient());
   const state = useSyncExternalStore(client.store.subscribe, client.store.getSnapshot);
+  const teacherError = state.serverError &&
+    ['AUTH_INVALID', 'STAGE_CONFLICT'].includes(state.serverError.code)
+    ? state.serverError.message
+    : null;
+  const authorizationError = state.serverError?.code === 'AUTH_REQUIRED'
+    ? state.serverError.message
+    : null;
 
   useEffect(() => {
     client.connect();
@@ -30,7 +37,7 @@ export default function App() {
           role={state.role}
           stage={state.stage}
           connected={state.connection === 'connected'}
-          error={state.serverError?.code === 'AUTH_INVALID' ? state.serverError.message : null}
+          error={teacherError}
           onLogin={(password) => client.authenticate(password)}
           onAdvance={(from, to) => client.advance(from, to)}
         />
@@ -45,6 +52,7 @@ export default function App() {
           onJoin={(groupId) => client.join(groupId)}
         />
       )}
+      {authorizationError && <p role="alert">{authorizationError}</p>}
       {state.connectionMessage && <p role="alert">{state.connectionMessage}</p>}
       {state.canReconnect && <button onClick={() => client.reconnect()}>重新連線</button>}
     </main>

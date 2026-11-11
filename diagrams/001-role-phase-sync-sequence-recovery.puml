@@ -49,7 +49,6 @@ end
 學生 -> StudentUI : 重新整理頁面或網路重連
 StudentUI -> Handler : 關閉舊連線
 Handler -> Connections : 清除舊連線角色與組別
-StudentUI -> StudentStorage : 讀取保存的 groupId
 StudentUI -> WebSocketServer : HTTP Upgrade（Origin）
 WebSocketServer -> WebSocketServer : 驗證本機 Origin allowlist
 alt Origin 允許
