@@ -8,8 +8,8 @@
 
 | Command | Exit | Observed result |
 |---|---:|---|
-| `npm run test` | 0 | Backend: 23 test files and 112 tests passed. Frontend Vitest exited 0 and reported no frontend unit test files. |
-| `$env:PLAYWRIGHT_PORT='5179'; $env:PLAYWRIGHT_TEST_ORIGIN='http://127.0.0.1:5179'; $env:PLAYWRIGHT_EXTERNAL_SERVER='1'; npm run test:e2e` | 0 | 30 Playwright tests passed in 31.7 seconds using the local Vite server on port 5179 because port 5173 was occupied. |
+| `npm run test` | 0 | After rebasing onto the latest `main`: backend 23 test files and 115 tests passed. Frontend Vitest exited 0 and reported no frontend unit test files. |
+| `$env:PLAYWRIGHT_PORT='5179'; $env:PLAYWRIGHT_TEST_ORIGIN='http://127.0.0.1:5179'; $env:PLAYWRIGHT_EXTERNAL_SERVER='1'; npm run test:e2e` | 0 | After rebasing onto the latest `main`: 30 Playwright tests passed in 32.7 seconds using the local Vite server on port 5179 because port 5173 was occupied. |
 | `npm run typecheck` | 0 | Frontend and backend `tsc --noEmit` passed. |
 | `npm run build` | 0 | Vite production build and backend TypeScript build passed. |
 | `git diff --check` | 0 | No whitespace errors in the diff. Git reported an existing LF-to-CRLF notice for `specs/002-guided-notes-import-export/tasks.md`. |
