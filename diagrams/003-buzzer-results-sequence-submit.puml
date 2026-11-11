@@ -1,0 +1,45 @@
+@startuml
+title 003 學生提交答案 - 時序圖
+actor "學生" as Student
+actor "老師介面" as TeacherUI
+participant "React UI / RealtimeClient" as UI
+participant "RealtimeHub" as Hub
+participant "BuzzerResultsService" as Results
+participant "ActivityState" as Activity
+participant "GroupRoster" as Groups
+
+Student -> UI : 加入有效組別
+UI -> Hub : student.join(groupId)
+Hub -> Groups : 驗證組別
+Hub --> UI : student.joined + activity.snapshot
+Hub --> UI : buzzerResults.questionList(questionIds)
+
+opt 準備階段有新題號匯入
+  TeacherUI -> Hub : guidedNotes.import(...)
+  Hub -> Activity : 更新活動題號
+  Hub ->> UI : 只向已加入學生更新 questionList
+end
+
+Student -> UI : 選題並送出原始答案
+UI -> Hub : submitAnswer(questionId, answerText)
+Hub -> Hub : 驗證 STUDENT 並讀取連線 groupId
+Hub -> Groups : 驗證組別
+Hub -> Results : submitAnswer(groupId, questionId, answerText)
+Results -> Activity : 檢查 BUZZING 及活動題號
+Results -> Results : 檢查非空白、唯一鍵並同步 check-and-set
+alt 身分、階段、題號或答案無效
+  Results --> Hub : 對應錯誤；不改變狀態或順序
+  Hub --> UI : error(requestId, code, message)
+else 首筆有效答案
+  Results -> Results : 保留原文、鎖定並配置 receivedOrder
+  Results -> Results : 以最小 receivedOrder 推導勝者
+  Results --> Hub : accepted submission
+  Hub --> UI : buzzerResults.submitted(accepted, locked)
+  Hub ->> TeacherUI : teacher-only 完整 teacherProgress
+end
+
+note over Student,TeacherUI
+BUZZING 中學生只收到本組接受確認或錯誤；
+教師登入時先收到全量快照，每筆有效答案後收到更新。
+end note
+@enduml

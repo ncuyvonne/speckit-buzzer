@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import type { AppConfig } from '../config.js';
 import { ActivityState } from '../domain/activity-state.js';
+import { BuzzerResultsQueryError, BuzzerResultsService } from '../domain/buzzer-results.js';
 import { GroupRoster } from '../domain/group-roster.js';
 import { GuidedNotesService, GuidedNotesServiceError } from '../guided-notes/service.js';
 import { isTeacherPasswordValid } from '../domain/teacher-auth.js';
@@ -19,6 +20,7 @@ export interface RealtimeHandlerOptions {
   readonly activity: ActivityState;
   readonly roster: GroupRoster;
   readonly guidedNotes: GuidedNotesService;
+  readonly buzzerResults: BuzzerResultsService;
 }
 
 function send(socket: WebSocket, message: unknown): void {
@@ -30,6 +32,7 @@ export class RealtimeHub {
   readonly #activity: ActivityState;
   readonly #roster: GroupRoster;
   readonly #guidedNotes: GuidedNotesService;
+  readonly #buzzerResults: BuzzerResultsService;
   readonly #connections = new Set<ConnectionContext>();
 
   constructor(options: RealtimeHandlerOptions) {
@@ -37,6 +40,7 @@ export class RealtimeHub {
     this.#activity = options.activity;
     this.#roster = options.roster;
     this.#guidedNotes = options.guidedNotes;
+    this.#buzzerResults = options.buzzerResults;
   }
 
   attach(socket: WebSocket): () => void {
@@ -83,6 +87,7 @@ export class RealtimeHub {
           payload: { ok: true },
         });
         this.#sendSnapshot(context);
+        this.#sendTeacherProgress(context);
         return;
       }
       case 'activity.advance': {
@@ -119,6 +124,64 @@ export class RealtimeHub {
           payload: { ok: true, groupId: context.groupId },
         });
         this.#sendSnapshot(context);
+        this.#sendStudentQuestionList(context);
+        if (this.#activity.stage === 'BUZZING') this.#sendOwnProgress(context);
+        return;
+      }
+      case 'buzzerResults.submitAnswer': {
+        if (context.role !== 'STUDENT') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (context.groupId === null || !this.#roster.has(context.groupId)) {
+          this.#sendError(context, 'GROUP_INVALID', message.requestId);
+          return;
+        }
+
+        const result = this.#buzzerResults.submitAnswer(
+          context.groupId,
+          message.payload.questionId,
+          message.payload.answerText,
+        );
+        if (!result.accepted) {
+          this.#sendError(context, result.code, message.requestId);
+          return;
+        }
+        send(context.socket, {
+          type: 'buzzerResults.submitted',
+          requestId: message.requestId,
+          payload: { questionId: message.payload.questionId, accepted: true, locked: true },
+        });
+        this.#broadcastTeacherProgress();
+        return;
+      }
+      case 'buzzerResults.getTeacherProgress': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        this.#sendTeacherProgress(context, message.requestId);
+        return;
+      }
+      case 'buzzerResults.getStudentResults': {
+        if (context.role !== 'STUDENT') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (context.groupId === null || !this.#roster.has(context.groupId)) {
+          this.#sendError(context, 'GROUP_INVALID', message.requestId);
+          return;
+        }
+        try {
+          send(context.socket, {
+            type: 'buzzerResults.studentResults',
+            requestId: message.requestId,
+            payload: this.#buzzerResults.getStudentResults(context.groupId),
+          });
+        } catch (error) {
+          if (error instanceof BuzzerResultsQueryError) this.#sendError(context, error.code, message.requestId);
+          else this.#sendError(context, 'INVALID_MESSAGE', message.requestId);
+        }
         return;
       }
       case 'guidedNotes.import': {
@@ -138,6 +201,7 @@ export class RealtimeHub {
             requestId: message.requestId,
             payload: result,
           });
+          this.#broadcastStudentQuestionLists();
         } catch (error) {
           if (error instanceof GuidedNotesServiceError) {
             this.#sendError(context, error.code, message.requestId, error.message);
@@ -190,6 +254,47 @@ export class RealtimeHub {
           questionCount: this.#activity.questionCount,
         },
       });
+    }
+  }
+
+  #sendStudentQuestionList(context: ConnectionContext): void {
+    if (context.role !== 'STUDENT') return;
+    send(context.socket, {
+      type: 'buzzerResults.questionList',
+      payload: { questionIds: this.#activity.questions.map((question) => question.questionId) },
+    });
+  }
+
+  #sendOwnProgress(context: ConnectionContext): void {
+    if (context.role !== 'STUDENT' || context.groupId === null) return;
+    try {
+      send(context.socket, {
+        type: 'buzzerResults.ownProgress',
+        payload: this.#buzzerResults.getOwnProgress(context.groupId),
+      });
+    } catch {
+      this.#sendError(context, 'GROUP_INVALID');
+    }
+  }
+
+  #sendTeacherProgress(context: ConnectionContext, requestId?: string): void {
+    if (context.role !== 'TEACHER') return;
+    send(context.socket, {
+      type: 'buzzerResults.teacherProgress',
+      ...(requestId ? { requestId } : {}),
+      payload: this.#buzzerResults.getTeacherProgress(),
+    });
+  }
+
+  #broadcastTeacherProgress(): void {
+    for (const connection of this.#connections) {
+      if (connection.role === 'TEACHER') this.#sendTeacherProgress(connection);
+    }
+  }
+
+  #broadcastStudentQuestionLists(): void {
+    for (const connection of this.#connections) {
+      if (connection.role === 'STUDENT') this.#sendStudentQuestionList(connection);
     }
   }
 

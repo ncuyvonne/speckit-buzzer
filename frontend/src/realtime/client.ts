@@ -1,6 +1,9 @@
 import { ActivityStore } from '../state/activity';
+import { BuzzerResultsStore, type OwnQuestionProgress } from '../state/buzzer-results';
 import { StudentSelection } from '../state/student-selection';
-import type { ActivityStage, ClientMessage, ErrorCode, GuidedNotesErrorCode } from './messages';
+import type {
+  ActivityStage, ClientMessage, ErrorCode, GuidedNotesErrorCode, StudentResults, TeacherProgress,
+} from './messages';
 
 const RECONNECT_BACKOFF_MS = [500, 1_000, 2_000, 4_000, 8_000] as const;
 
@@ -11,6 +14,7 @@ interface LocationLike {
 
 export interface RealtimeClientOptions {
   readonly store?: ActivityStore;
+  readonly buzzerResultsStore?: BuzzerResultsStore;
   readonly studentSelection?: StudentSelection;
   readonly location?: LocationLike;
   readonly createSocket?: (url: string) => WebSocket;
@@ -35,6 +39,30 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 }
 
+function isTeacherProgress(value: unknown): value is TeacherProgress {
+  if (!isRecord(value) || !Array.isArray(value.questions)) return false;
+  return value.questions.every((question) => isRecord(question)
+    && typeof question.questionId === 'string'
+    && Array.isArray(question.groups)
+    && question.groups.every((group) => isRecord(group)
+      && typeof group.groupId === 'string'
+      && typeof group.submitted === 'boolean'
+      && (typeof group.answerText === 'string' || group.answerText === null))
+    && (typeof question.winningGroupId === 'string' || question.winningGroupId === null)
+    && (typeof question.winningAnswer === 'string' || question.winningAnswer === null));
+}
+
+function isStudentResults(value: unknown): value is StudentResults {
+  if (!isRecord(value) || !Array.isArray(value.questions)) return false;
+  return value.questions.every((question) => isRecord(question)
+    && typeof question.questionId === 'string'
+    && (typeof question.winningGroupId === 'string' || question.winningGroupId === null)
+    && (typeof question.winningAnswer === 'string' || question.winningAnswer === null)
+    && (typeof question.ownAnswer === 'string' || question.ownAnswer === null)
+    && (question.ownStatus === 'SUBMITTED' || question.ownStatus === 'NOT_SUBMITTED')
+    && typeof question.ownGroupWon === 'boolean');
+}
+
 const GUIDED_NOTES_ERROR_CODES = new Set<string>([
   'GUIDED_NOTES_BUSY',
   'SHEETS_NOT_CONFIGURED',
@@ -53,6 +81,7 @@ const GUIDED_NOTES_ERROR_CODES = new Set<string>([
 
 export class RealtimeClient {
   readonly store: ActivityStore;
+  readonly buzzerResults: BuzzerResultsStore;
   readonly #location: LocationLike;
   readonly #createSocket: (url: string) => WebSocket;
   readonly #studentSelection: StudentSelection;
@@ -61,9 +90,11 @@ export class RealtimeClient {
   #reconnectAttempt = 0;
   #stopped = true;
   #awaitingInitialSnapshot = false;
+  readonly #pendingBuzzerRequests = new Map<string, { questionId: string; answerText: string }>();
 
   constructor(options: RealtimeClientOptions = {}) {
     this.store = options.store ?? new ActivityStore();
+    this.buzzerResults = options.buzzerResultsStore ?? new BuzzerResultsStore();
     this.#studentSelection = options.studentSelection ?? new StudentSelection();
     this.#location = options.location ?? window.location;
     this.#createSocket = options.createSocket ?? ((url) => new WebSocket(url));
@@ -105,6 +136,28 @@ export class RealtimeClient {
 
   join(groupId: string): boolean {
     return this.#send({ type: 'student.join', requestId: createRequestId(), payload: { groupId } });
+  }
+
+  submitAnswer(questionId: string, answerText: string): boolean {
+    const requestId = createRequestId();
+    const sent = this.#send({
+      type: 'buzzerResults.submitAnswer',
+      requestId,
+      payload: { questionId, answerText },
+    });
+    if (sent) {
+      this.#pendingBuzzerRequests.set(requestId, { questionId, answerText });
+      this.buzzerResults.clearError();
+    }
+    return sent;
+  }
+
+  getTeacherProgress(): boolean {
+    return this.#send({ type: 'buzzerResults.getTeacherProgress', requestId: createRequestId(), payload: {} });
+  }
+
+  getStudentResults(): boolean {
+    return this.#send({ type: 'buzzerResults.getStudentResults', requestId: createRequestId(), payload: {} });
   }
 
   advance(from: ActivityStage, to: ActivityStage): boolean {
@@ -171,6 +224,7 @@ export class RealtimeClient {
     socket.addEventListener('close', (event: CloseEvent) => {
       if (this.#socket !== socket) return;
       this.#socket = null;
+      this.#pendingBuzzerRequests.clear();
       this.store.resetConnectionRole();
       if (this.#stopped) {
         this.store.update({ connection: 'disconnected' });
@@ -202,6 +256,49 @@ export class RealtimeClient {
     if (!isRecord(message) || typeof message.type !== 'string' || !isRecord(message.payload)) return;
     const payload = message.payload;
 
+    if (message.type === 'buzzerResults.questionList'
+      && this.store.getSnapshot().role === 'STUDENT'
+      && isStringArray(payload.questionIds)) {
+      this.buzzerResults.applyQuestionList(payload.questionIds);
+      return;
+    }
+    if (message.type === 'buzzerResults.teacherProgress') {
+      if (this.store.getSnapshot().role === 'TEACHER' && isTeacherProgress(payload)) {
+        this.buzzerResults.applyTeacherProgress(payload);
+      }
+      return;
+    }
+    if (message.type === 'buzzerResults.ownProgress'
+      && this.store.getSnapshot().role === 'STUDENT'
+      && Array.isArray(payload.questions)) {
+      const questions = payload.questions.filter((item): item is Record<string, unknown> => isRecord(item));
+      if (questions.every((item) => typeof item.questionId === 'string'
+        && typeof item.submitted === 'boolean'
+        && (typeof item.answerText === 'string' || item.answerText === null)
+        && typeof item.locked === 'boolean')) {
+        this.buzzerResults.applyOwnProgress(questions as unknown as OwnQuestionProgress[]);
+      }
+      return;
+    }
+    if (message.type === 'buzzerResults.studentResults') {
+      if (this.store.getSnapshot().role === 'STUDENT' && isStudentResults(payload)) {
+        this.buzzerResults.applyStudentResults(payload);
+      }
+      return;
+    }
+    if (message.type === 'buzzerResults.submitted'
+      && typeof message.requestId === 'string'
+      && typeof payload.questionId === 'string'
+      && payload.accepted === true
+      && payload.locked === true) {
+      const pending = this.#pendingBuzzerRequests.get(message.requestId);
+      if (pending && pending.questionId === payload.questionId) {
+        this.buzzerResults.applyAccepted(pending.questionId, pending.answerText);
+        this.#pendingBuzzerRequests.delete(message.requestId);
+      }
+      return;
+    }
+
     if (message.type === 'activity.snapshot' && isActivityStage(payload.stage) && Array.isArray(payload.groups) &&
       payload.groups.every((group) => typeof group === 'string')) {
       this.store.applySnapshot(payload.stage, payload.groups);
@@ -212,6 +309,7 @@ export class RealtimeClient {
           this.#send({ type: 'student.join', requestId: createRequestId(), payload: { groupId: savedGroupId } });
         }
       }
+      if (payload.stage === 'ENDED' && this.store.getSnapshot().role === 'STUDENT') this.getStudentResults();
       return;
     }
     if (message.type === 'activity.phaseChanged' && isActivityStage(payload.stage)) {
@@ -219,6 +317,7 @@ export class RealtimeClient {
         stage: payload.stage,
         ...(this.store.getSnapshot().serverError?.code === 'STAGE_CONFLICT' ? { serverError: null } : {}),
       });
+      if (payload.stage === 'ENDED' && this.store.getSnapshot().role === 'STUDENT') this.getStudentResults();
       return;
     }
     if (
@@ -261,6 +360,12 @@ export class RealtimeClient {
       return;
     }
     if (message.type === 'error' && typeof payload.code === 'string' && typeof payload.message === 'string') {
+      const requestId = typeof message.requestId === 'string' ? message.requestId : null;
+      const pending = requestId === null ? undefined : this.#pendingBuzzerRequests.get(requestId);
+      if (requestId !== null && pending) {
+        this.buzzerResults.applyError(payload.code as ErrorCode, payload.message, pending.questionId);
+        this.#pendingBuzzerRequests.delete(requestId);
+      }
       if (payload.code === 'GROUP_INVALID') {
         this.#studentSelection.clear();
         this.store.update({ role: 'UNAUTHENTICATED', selectedGroupId: null });

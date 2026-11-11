@@ -1,0 +1,117 @@
+@startuml
+title 003 搶答與結果判定 - 類別圖
+
+class RealtimeHub {
+  -connections: Set<ConnectionContext>
+  +submitAnswer(context, questionId, answerText)
+  +getTeacherProgress(context)
+  +getStudentResults(context)
+  +sendOwnProgress(context)
+}
+
+class ConnectionContext {
+  role: TEACHER | STUDENT | UNAUTHENTICATED
+  groupId: string | null
+}
+
+class ActivityState {
+  stage: PREPARING | BUZZING | ENDED
+  questions: Question[]
+}
+
+class GroupRoster {
+  ids: string[]
+  +has(groupId)
+}
+
+class Question {
+  questionId: string
+  displayOrder: number
+}
+
+class BuzzerResultsService {
+  +submitAnswer(groupId, questionId, answerText)
+  +getSubmission(groupId, questionId)
+  +getWinner(questionId)
+  +getOwnProgress(groupId)
+  +getTeacherProgress()
+  +getStudentResults(groupId)
+  -submissions: Map<GroupSubmission>
+  -winners: Map<WinningResult>
+  -nextReceivedOrder: number
+}
+
+class GroupSubmission {
+  groupId: string
+  questionId: string
+  answerText: string
+  receivedOrder: number
+  acceptedAt: number
+  locked: boolean
+}
+
+class OwnQuestionProgress {
+  questionId: string
+  submitted: boolean
+  answerText: string | null
+  locked: boolean
+}
+
+class TeacherQuestionProgress {
+  questionId: string
+  groups: GroupProgress[]
+  winningGroupId: string | null
+  winningAnswer: string | null
+}
+
+class GroupProgress {
+  groupId: string
+  submitted: boolean
+  answerText: string | null
+}
+
+class StudentQuestionResult {
+  questionId: string
+  ownAnswer: string | null
+  ownStatus: SUBMITTED | NOT_SUBMITTED
+  winningGroupId: string | null
+  winningAnswer: string | null
+  ownGroupWon: boolean
+}
+
+interface WinningResultsProvider {
+  +getSnapshot()
+}
+
+class BuzzerWinningResultsProvider
+class GuidedNotesService
+class GoogleSheetsAdapter
+
+RealtimeHub "1" o-- "0..*" ConnectionContext
+RealtimeHub --> BuzzerResultsService : authorizes and dispatches
+RealtimeHub --> ActivityState : reads current phase
+RealtimeHub --> GroupRoster : validates joined group
+BuzzerResultsService --> ActivityState : reads ordered questions and stage
+BuzzerResultsService --> GroupRoster : validates groups and roster order
+BuzzerResultsService "1" o-- "0..*" GroupSubmission : stores accepted answers
+ActivityState "1" o-- "0..*" Question
+BuzzerResultsService ..> OwnQuestionProgress : creates group-only reconnect state
+BuzzerResultsService ..> TeacherQuestionProgress : creates full teacher view
+BuzzerResultsService ..> StudentQuestionResult : creates ENDED student view
+BuzzerWinningResultsProvider ..|> WinningResultsProvider
+BuzzerWinningResultsProvider --> BuzzerResultsService : reads winners
+BuzzerWinningResultsProvider --> ActivityState : checks readiness
+GuidedNotesService --> WinningResultsProvider : requests authoritative snapshot
+GuidedNotesService --> GoogleSheetsAdapter : writes only server results
+
+note right of GroupSubmission
+One accepted entry per group and question.
+The first valid entry locks that pair;
+receivedOrder determines the winner.
+end note
+
+note bottom of StudentQuestionResult
+Student results contain the winning answer
+and the requesting group's own answer only.
+end note
+@enduml

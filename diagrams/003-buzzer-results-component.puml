@@ -1,0 +1,50 @@
+@startuml
+title 003 搶答與結果判定 - 組件圖
+left to right direction
+
+actor "學生" as Student
+actor "老師" as Teacher
+component "React App" as UI
+component "BuzzerAnswerPanel" as StudentPanel
+component "TeacherResultsPanel" as TeacherPanel
+component "StudentResultsPanel" as StudentResultsPanel
+component "RealtimeClient / BuzzerResultsStore" as Client
+component "RealtimeHub" as Hub
+component "BuzzerResultsService" as Results
+component "ActivityState" as Activity
+component "GroupRoster" as Groups
+component "BuzzerWinningResultsProvider" as Provider
+component "GuidedNotesService\n(Feature 002)" as GuidedNotes
+component "GoogleSheetsAdapter\n(Feature 002)" as Sheets
+
+Student --> UI : 加入組別、選題、提交答案
+Teacher --> UI : 匯入題號、開始／結束、查看進度
+UI --> StudentPanel
+UI --> TeacherPanel
+UI --> StudentResultsPanel
+StudentPanel --> Client : student.join / submitAnswer
+TeacherPanel --> Client : authenticate / getTeacherProgress
+StudentResultsPanel <-- Client : ENDED 結果
+Client <--> Hub : WebSocket 訊息與投影
+Hub --> Hub : 驗證連線角色、組別、階段
+Hub --> Results : 提交、查詢及建立角色限定投影
+Results --> Activity : 讀取階段與有序題號
+Results --> Groups : 驗證組別及產生全組教師進度
+Results --> Results : 同步接受、鎖定及配置 receivedOrder
+Hub ..> Client : 題號清單、個人確認、ownProgress、學生結果
+Hub ..> Client : 教師登入快照及每筆有效答案後的 teacherProgress
+Provider --> Results : 讀取每題勝出答案
+Provider --> Activity : 檢查階段及題目是否可用
+GuidedNotes --> Provider : 取得伺服器權威結果
+GuidedNotes --> Sheets : 寫入勝出答案或清空未勝出題目
+
+note bottom of Results
+每組每題只保留第一筆有效答案。
+receivedOrder 決定每題唯一勝者；不判斷正確性或計分。
+end note
+
+note bottom of Hub
+學生加入後只收到題號；BUZZING 重連只收到本組 ownProgress。
+ENDED 學生只收到勝出答案與本組作答；老師才收到全組進度。
+end note
+@enduml
