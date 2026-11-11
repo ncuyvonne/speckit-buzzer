@@ -16,6 +16,18 @@
 
 The Playwright suite covers submit/lock feedback, teacher-only live progress within two seconds for three groups, BUZZING reconnect state, ENDED results, result privacy, reload recovery, and existing Feature 001/002 flows. The Feature 002 provider integration uses `FakeGoogleSheetsAdapter`; no live Sheets credentials were read. The final `npm run test` run also covers the student query protocol, student question-list update after import, and unavailable provider state.
 
+## Sequential phase-gate validation
+
+Phase 1 (Setup) and Phase 2 (Foundational) contain no tasks. Phases 3–5 were then validated in order; each phase passed before the next phase's tests ran.
+
+| Phase | Backend command scope and result | Playwright scope and result |
+|---|---|---|
+| 3 — User Story 1 | `buzzer-results.test.ts`, `buzzer-results-protocol.test.ts`, `buzzer-results-submit.test.ts` — 3 files, 19 tests passed. | `buzzer-results-submit.spec.ts` — 1/1 passed. |
+| 4 — User Story 2 | `buzzer-results-progress.test.ts`, `buzzer-results-teacher-progress.test.ts` — 2 files, 3 tests passed. | `buzzer-results-teacher-progress.spec.ts` — 1/1 passed. |
+| 5 — User Story 3 | `buzzer-results-student-results.test.ts`, `buzzer-results-release.test.ts`, `buzzer-results-export.test.ts` — 3 files, 6 tests passed. | `buzzer-results-release.spec.ts` — 1/1 passed. |
+
+Each Playwright phase used port 5179 with `PLAYWRIGHT_EXTERNAL_SERVER=1`. The full suite, typecheck, and build above also passed after all three phases.
+
 ## PlantUML cross-check
 
 - Updated all four Feature 003 `.puml` sources against the implemented component, class, submit, reconnect, result-release, and export flows.
