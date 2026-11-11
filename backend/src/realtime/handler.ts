@@ -111,6 +111,15 @@ export class RealtimeHub {
           this.#sendError(context, 'INVALID_MESSAGE', message.requestId);
           return;
         }
+        if (context.role === 'STUDENT' && context.groupId !== message.payload.groupId) {
+          this.#sendError(
+            context,
+            'GROUP_INVALID',
+            message.requestId,
+            '已加入的組別不能變更，請重新連線以恢復原組別。',
+          );
+          return;
+        }
         if (!this.#roster.has(message.payload.groupId)) {
           this.#sendError(context, 'GROUP_INVALID', message.requestId);
           return;

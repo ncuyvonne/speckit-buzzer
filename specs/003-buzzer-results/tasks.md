@@ -187,3 +187,8 @@ T004 frontend/tests/e2e/buzzer-results-submit.spec.ts
 - 每個 data-model 欄位限制需按 data-model.md 原約束實作；不可接受客戶端提供的組別或時間。
 - [P] 僅用於不同檔案且無未完成依賴的工作。
 - 測試任務先於該故事實作任務；本 tasks 產生階段沒有建立或執行測試程式碼。
+
+## Phase 7: Convergence
+- [X] T033 CRITICAL：在 `student.join` 維持已加入學生的伺服器組別綁定，拒絕同一連線以不同 `groupId` 重新綁定；加入 WebSocket 整合回歸測試，確認重新加入不會改變本組進度或結果可見範圍 per Constitution IV, FR-001, FR-016, US3/AC4 (contradicts)
+- [X] T034 HIGH：使用 Unicode `White_Space` 定義驗證答案至少含一個非空白字元（涵蓋 U+0085 NEL），接受時保留原始字串，並加入單元回歸測試 per FR-004, SC-003, T001 (partial)
+- [X] T035 HIGH：將 teacher-progress Playwright 負載測試參數化為同時連線學生人數；未指定實際班級人數時以 200 人作代表性安全驗收基準，驗證提交至老師更新不超過 2 秒，並在 validation-results.md 記錄連線人數與實測時間；可用 `PLAYWRIGHT_CLASS_SIZE` 覆寫 per SC-004, T013 (partial)

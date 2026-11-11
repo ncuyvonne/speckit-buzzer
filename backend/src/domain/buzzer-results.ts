@@ -100,7 +100,9 @@ export class BuzzerResultsService {
     if (!this.#activity.questions.some((question) => question.questionId === questionId)) {
       return { accepted: false, code: 'QUESTION_INVALID' };
     }
-    if (answerText.trim().length === 0) return { accepted: false, code: 'ANSWER_EMPTY' };
+    // ECMAScript trim() omits some Unicode White_Space characters (notably
+    // U+0085 NEL), so test for any code point outside the Unicode property.
+    if (!/\P{White_Space}/u.test(answerText)) return { accepted: false, code: 'ANSWER_EMPTY' };
 
     const key = submissionKey(groupId, questionId);
     if (this.#submissions.has(key)) return { accepted: false, code: 'ANSWER_LOCKED' };

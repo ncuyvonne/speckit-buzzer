@@ -8,8 +8,8 @@
 
 | Command | Exit | Observed result |
 |---|---:|---|
-| `npm run test` | 0 | After rebasing onto the latest `main`: backend 23 test files and 115 tests passed. Frontend Vitest exited 0 and reported no frontend unit test files. |
-| `$env:PLAYWRIGHT_PORT='5179'; $env:PLAYWRIGHT_TEST_ORIGIN='http://127.0.0.1:5179'; $env:PLAYWRIGHT_EXTERNAL_SERVER='1'; npm run test:e2e` | 0 | After rebasing onto the latest `main`: 30 Playwright tests passed in 32.7 seconds using the local Vite server on port 5179 because port 5173 was occupied. |
+| `npm run test` | 0 | Backend 23 test files and 117 tests passed. Frontend Vitest exited 0 and reported no frontend unit test files. |
+| `$env:PLAYWRIGHT_PORT='5179'; $env:PLAYWRIGHT_TEST_ORIGIN='http://127.0.0.1:5179'; $env:PLAYWRIGHT_EXTERNAL_SERVER='1'; npm run test:e2e` | 0 | 30 Playwright tests passed in 34.8 seconds using the local Vite server on port 5179 because port 5173 was occupied. The parameterized teacher-progress case used its default of 3 student connections and measured 43 ms. |
 | `npm run typecheck` | 0 | Frontend and backend `tsc --noEmit` passed. |
 | `npm run build` | 0 | Vite production build and backend TypeScript build passed. |
 | `git diff --check` | 0 | No whitespace errors in the diff. Git reported an existing LF-to-CRLF notice for `specs/002-guided-notes-import-export/tasks.md`. |
@@ -27,6 +27,14 @@ Phase 1 (Setup) and Phase 2 (Foundational) contain no tasks. Phases 3–5 were t
 | 5 — User Story 3 | `buzzer-results-student-results.test.ts`, `buzzer-results-release.test.ts`, `buzzer-results-export.test.ts` — 3 files, 6 tests passed. | `buzzer-results-release.spec.ts` — 1/1 passed. |
 
 Each Playwright phase used port 5179 with `PLAYWRIGHT_EXTERNAL_SERVER=1`. The full suite, typecheck, and build above also passed after all three phases.
+
+## Phase 7 — Convergence
+
+| Scope | Result |
+|---|---|
+| T033 WebSocket group-binding integration regression and T034 Unicode White_Space unit regression | 2 backend test files, 10 tests passed. U+0085 NEL is rejected as whitespace without consuming an order; accepted answers retain their raw text. |
+| Parameterized teacher-progress smoke run with `PLAYWRIGHT_CLASS_SIZE=3` | 1/1 passed; the latest targeted rerun measured 57 ms from submit to teacher update. The full Playwright run also passed this test at the default size of 3 and measured 43 ms. |
+| T035 representative classroom-load acceptance with `PLAYWRIGHT_CLASS_SIZE=200` | 1/1 passed with one teacher and 200 concurrent student connections (3 UI pages and 197 additional WebSockets); submit-to-teacher update measured 70 ms, below the 2-second target. No exact class size was specified; 200 is the representative safety baseline suggested by the user, not a claim about the user's actual class size. Set `PLAYWRIGHT_CLASS_SIZE` to another count when needed. |
 
 ## PlantUML cross-check
 

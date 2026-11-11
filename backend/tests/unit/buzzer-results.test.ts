@@ -60,6 +60,20 @@ describe('BuzzerResultsService submission', () => {
     });
   });
 
+  it('rejects Unicode White_Space including NEL without consuming an order', () => {
+    const { service } = createSystem(['1']);
+
+    expect(service.submitAnswer('A', '1', '\u0085\u3000\t')).toMatchObject({
+      accepted: false,
+      code: 'ANSWER_EMPTY',
+    });
+    expect(service.getSubmission('A', '1')).toBeNull();
+    expect(service.submitAnswer('B', '1', '\u00a0 valid \u3000')).toMatchObject({
+      accepted: true,
+      submission: { receivedOrder: 1, answerText: '\u00a0 valid \u3000' },
+    });
+  });
+
   it('rejects an empty question list and invalid groups without mutating state', () => {
     const empty = createSystem([]);
     expect(empty.service.submitAnswer('A', '1', 'answer')).toMatchObject({

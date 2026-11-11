@@ -178,4 +178,40 @@ describe('buzzer results submit WebSocket integration', () => {
     await expect(error).resolves.toMatchObject({ requestId: 'empty-activity', payload: { code: 'QUESTION_INVALID' } });
     expect(app.buzzerResults.getSubmission('A', '1')).toBeNull();
   });
+
+  it('keeps an already joined student connection bound to its original group', async () => {
+    const { app, port } = await startServer();
+    const teacher = await connect(port);
+    const student = await connect(port);
+
+    student.socket.send(JSON.stringify({ type: 'student.join', requestId: 'join-A', payload: { groupId: 'A' } }));
+    await student.inbox.waitFor((message) => message.type === 'student.joined');
+    await prepareTeacher(app, teacher.inbox, teacher.socket, true);
+
+    const rebindError = student.inbox.waitFor((message) => message.type === 'error' && message.requestId === 'rebind');
+    student.socket.send(JSON.stringify({ type: 'student.join', requestId: 'rebind', payload: { groupId: 'B' } }));
+    await expect(rebindError).resolves.toMatchObject({
+      requestId: 'rebind',
+      payload: { code: 'GROUP_INVALID', message: '已加入的組別不能變更，請重新連線以恢復原組別。' },
+    });
+
+    const accepted = student.inbox.waitFor((message) => message.type === 'buzzerResults.submitted');
+    student.socket.send(JSON.stringify({
+      type: 'buzzerResults.submitAnswer', requestId: 'answer-A', payload: { questionId: '1', answerText: 'A answer' },
+    }));
+    await expect(accepted).resolves.toMatchObject({
+      requestId: 'answer-A',
+      payload: { questionId: '1', accepted: true, locked: true },
+    });
+    expect(app.buzzerResults.getSubmission('A', '1')?.answerText).toBe('A answer');
+    expect(app.buzzerResults.getSubmission('B', '1')).toBeNull();
+    expect(app.buzzerResults.getOwnProgress('A').questions[0]).toMatchObject({
+      submitted: true,
+      answerText: 'A answer',
+    });
+    expect(app.buzzerResults.getOwnProgress('B').questions[0]).toMatchObject({
+      submitted: false,
+      answerText: null,
+    });
+  });
 });

@@ -5,6 +5,7 @@
 ## Authorization and data visibility
 
 - 學生必須已加入有效組別。組別由伺服器連線取得；客戶端不可在提交中指定 groupId。
+- 同一條已加入學生連線只能維持原組別；以不同 groupId 重送 student.join 會被拒絕，且連線仍保留原組別。
 - 只有伺服器 Activity 為 BUZZING 且題號存在於目前題目清單時，才可提交。
 - 客戶端時間、勝出組別、答案正確性及分數均不具權威性。
 - 教師快照與進度事件只傳給已驗證教師。
@@ -161,7 +162,7 @@ ENDED 後的 requestId 關聯回應。
 | Code | 意義及不變更保證 |
 |---|---|
 | AUTH_REQUIRED | 連線未取得此操作所需權限；狀態不變。 |
-| GROUP_INVALID | 學生尚未加入有效組別；狀態不變。 |
+| GROUP_INVALID | 學生尚未加入有效組別，或已加入後嘗試變更組別；既有連線身分與作答狀態不變。 |
 | STAGE_CONFLICT | 提交不在 BUZZING，或 ENDED 前要求學生結果；不更改狀態或釋出結果。 |
 | QUESTION_INVALID | 題號不屬於目前 Activity；不儲存答案且不消耗接收序號。 |
 | ANSWER_EMPTY | 答案為空或只含空白；提示輸入答案，保留提交名額。 |
