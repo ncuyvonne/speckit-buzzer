@@ -39,6 +39,26 @@ function createService(
   });
 }
 
+class PendingBatchWriteSheets extends FakeGoogleSheetsAdapter {
+  #completePendingWrite: (() => void) | null = null;
+  #pendingWrite: Promise<void> | null = null;
+
+  override batchWriteValues(...args: Parameters<FakeGoogleSheetsAdapter['batchWriteValues']>): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      this.#completePendingWrite = () => {
+        this.#pendingWrite = super.batchWriteValues(...args);
+        void this.#pendingWrite.then(resolve, reject);
+      };
+    });
+  }
+
+  async completePendingWrite(): Promise<void> {
+    if (this.#completePendingWrite === null) throw new Error('No write is pending.');
+    this.#completePendingWrite();
+    await this.#pendingWrite;
+  }
+}
+
 describe('Guided Notes integration error behavior', () => {
   it('maps missing credentials, missing sheets, and invalid layouts to stable actionable errors', async () => {
     const noCredentials = new GuidedNotesService({
@@ -171,6 +191,40 @@ describe('Guided Notes integration error behavior', () => {
     })).rejects.toMatchObject({ code: 'SHEET_READ_FAILED' });
     expect(activity.questions).toEqual([]);
     expect(activity.worksheet).toBeNull();
+  });
+
+  it('reports a pending write as unconfirmed at deadline and holds the operation lock until it settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const sheets = new PendingBatchWriteSheets([validFixture()]);
+      const activity = new ActivityState();
+      activity.replaceGuidedNotesImport(worksheet, questions);
+      activity.advance('PREPARING', 'BUZZING');
+      activity.advance('BUZZING', 'ENDED');
+      const service = createService(activity, sheets);
+
+      const exportRequest = service.exportAnswers();
+      const exportRejection = expect(exportRequest).rejects.toMatchObject({
+        code: 'SHEET_WRITE_UNCONFIRMED',
+        message: expect.stringContaining('可能仍會完成'),
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await exportRejection;
+      expect(service.activeOperation).toBe('EXPORT');
+      expect(sheets.writeBatches).toHaveLength(0);
+      await expect(service.exportAnswers()).rejects.toMatchObject({ code: 'GUIDED_NOTES_BUSY' });
+
+      await sheets.completePendingWrite();
+      for (let index = 0; index < 8 && service.activeOperation !== null; index += 1) {
+        await Promise.resolve();
+      }
+      expect(service.activeOperation).toBeNull();
+      expect(sheets.writeBatches).toHaveLength(1);
+      expect(sheets.getCellState(worksheet, 'B3').value).toBe('答案一');
+      expect(sheets.getCellState(worksheet, 'B4').value).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('includes ambiguous-write read-back in the deadline and never retries that write', async () => {

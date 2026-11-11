@@ -16,18 +16,17 @@ alt 未登入／非準備階段
 else 已授權
   Hub -> Import : importWorksheet(url, worksheetTitle)
   Import -> Import : 取得操作鎖、啟動 10 秒 deadline、驗證參照
-  Import -> Adapter : resolveWorksheet(id, title)
-  Adapter -> Sheet : 讀取分頁 metadata 及 grid 尺寸
-  Sheet --> Adapter : sheetId、rowCount、columnCount
-  Adapter --> Import : ResolvedWorksheet
-  Import -> Adapter : readWorksheet(resolved)
-  Adapter -> Sheet : 讀取完整 grid（FORMATTED_VALUE）
-  Sheet --> Adapter : 顯示值
-  Adapter --> Import : WorksheetGrid
-  loop 暫時性讀取錯誤，最多重試 2 次（250 ms、500 ms；共用 10 秒期限）
-    Import -> Adapter : 重試可重複讀取
-    Adapter -> Sheet : metadata／grid values request
-    Sheet --> Adapter : 結果或錯誤
+  loop resolveWorksheet 初次呼叫；可重試暫時性錯誤最多 2 次（250 ms、500 ms）
+    Import -> Adapter : resolveWorksheet(id, title) via #readWithRetry
+    Adapter -> Sheet : 讀取分頁 metadata 及 grid 尺寸
+    Sheet --> Adapter : sheetId、rowCount、columnCount 或錯誤
+    Adapter --> Import : ResolvedWorksheet 或正規化錯誤
+  end
+  loop readWorksheet 初次呼叫；可重試暫時性錯誤最多 2 次（250 ms、500 ms）
+    Import -> Adapter : readWorksheet(resolved) via #readWithRetry
+    Adapter -> Sheet : 讀取完整 grid（FORMATTED_VALUE）
+    Sheet --> Adapter : 顯示值或錯誤
+    Adapter --> Import : WorksheetGrid 或正規化錯誤
   end
   alt 讀取成功（首次或重試後）
     Import -> Import : 動態找唯一標題列與「題號」「作答」欄
@@ -46,7 +45,7 @@ else 已授權
         Hub --> UI : guidedNotes.imported
       end
     end
-  else 讀取重試耗盡或 10 秒期限屆滿
+  else metadata／grid 讀取重試耗盡或 10 秒期限屆滿
     Import --> Hub : SHEET_READ_FAILED
     Hub --> UI : 顯示網路／存取修正訊息；Activity 不變
   end

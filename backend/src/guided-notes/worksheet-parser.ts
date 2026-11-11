@@ -43,13 +43,14 @@ function findUniqueHeader(values: readonly (readonly string[])[]): HeaderPositio
       if (label === ANSWER_HEADER) answerColumns.push(columnIndex);
     }
 
-    if (questionColumns.length > 1 || answerColumns.length > 1) {
+    const isCandidateHeaderRow = questionColumns.length > 0 && answerColumns.length > 0;
+    if (isCandidateHeaderRow && (questionColumns.length > 1 || answerColumns.length > 1)) {
       throw new WorksheetParserError(
         'SHEET_LAYOUT_INVALID',
         '標題列中的「題號」或「作答」重複，請各保留一個欄位標題。',
       );
     }
-    if (questionColumns.length === 1 && answerColumns.length === 1) {
+    if (isCandidateHeaderRow) {
       candidates.push({
         rowIndex,
         questionColumnIndex: questionColumns[0]!,

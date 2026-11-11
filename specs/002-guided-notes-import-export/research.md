@@ -37,7 +37,7 @@
 
 ### 4. Scan worksheet values and map by visible question IDs
 
-**Decision**: Retrieve selected worksheet dimensions and its values, then scan the complete grid for the unique header row. Compare header labels after trimming surrounding whitespace. Request formatted values so IDs use the representation visible in the worksheet; ignore whitespace-only ID cells, preserve other ID text exactly, retain source order, and reject duplicates. Accept 1–100 valid IDs; reject zero or more than 100.
+**Decision**: Retrieve selected worksheet dimensions and its values, then scan the complete grid for the unique candidate header row. A label is an entire cell whose trimmed text exactly matches `題號` or `作答`; only rows containing both labels are candidates. Rows containing only one required label are ignored, even if that label repeats. A candidate row with duplicate required labels or more than one candidate row is invalid. Request formatted values so IDs use the representation visible in the worksheet; ignore whitespace-only ID cells, preserve other ID text exactly, retain source order, and reject duplicates. Accept 1–100 valid IDs; reject zero or more than 100.
 
 **Rationale**: The specification allows headers anywhere and variable column order, so fixed A1/column assumptions are invalid. The import sequence and class diagrams model one or more questions and the import sequence treats an empty effective question list as invalid. Google documents `FORMATTED_VALUE` as the default for values reads and permits reads of a specified A1 range.
 

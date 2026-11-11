@@ -41,12 +41,12 @@ A transient result of scanning one current worksheet. Do not save it as the auth
 
 | Field | Type | Validation / Rule |
 |---|---|---|
-| `headerRowNumber` | `number` | 1-based row containing exactly one trimmed `題號` and one trimmed `作答` header. There must be exactly one candidate header row. |
+| `headerRowNumber` | `number` | 1-based row containing exactly one whole-cell, trimmed `題號` and one whole-cell, trimmed `作答` header. A candidate row contains both required labels; only one candidate row may exist. |
 | `questionColumnNumber` | `number` | 1-based column of `題號`, discovered at runtime. |
 | `answerColumnNumber` | `number` | 1-based column of `作答`, discovered at runtime. |
 | `questionRows` | `Map<string, number>` | Maps each non-empty unique displayed question ID to its current 1-based row. On export this is rebuilt from the latest read. |
 
-Header comparison trims only surrounding whitespace and otherwise requires the exact configured Chinese titles. Multiple candidate header rows, missing headers, or duplicate header titles are invalid.
+Header comparison trims only surrounding whitespace and otherwise requires the exact configured Chinese titles. Text that merely mentions a title is not a label. Rows that contain only one required title are not candidates, even if that title appears more than once. A candidate row with duplicate required titles, missing headers, or multiple candidate rows is invalid.
 
 ## WinningAnswer
 
@@ -79,11 +79,11 @@ A transient request and outcome for a teacher-triggered import or export.
 |---|---|---|
 | `requestId` | `string` | Existing WebSocket request ID (1–64 ASCII letters, digits, `_` or `-`); used to correlate one response. |
 | `operationType` | `IMPORT \| EXPORT` | Import or export flow. |
-| `status` | `PENDING \| SUCCEEDED \| FAILED \| UNCONFIRMED` | Server-owned. UI reports completion only for `SUCCEEDED`; uncertain network outcomes are not mislabeled successful. |
+| `status` | `PENDING \| SUCCEEDED \| FAILED \| UNCONFIRMED` | Server-owned. UI reports completion only for `SUCCEEDED`; uncertain network outcomes are not mislabeled successful. If the deadline expires while a write remains pending, the request may still apply after the `UNCONFIRMED` response. |
 | `writtenCellCount` | `number` | Export result count when known, including cleared target cells if the API response confirms them. |
 | `clearedCellCount` | `number` | Export count of questions without a winning answer. |
 
-Only one external Guided Notes operation may be active at a time in the single-process activity. Operation details are not durable records and must not contain credentials or raw Google API error payloads.
+Only one external Guided Notes operation may be active at a time in the single-process activity. After a write deadline response, keep the operation lock until the original write request settles. Operation details are not durable records and must not contain credentials or raw Google API error payloads.
 
 ## Relationships and lifecycle
 

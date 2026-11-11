@@ -26,7 +26,7 @@ This contract extends [Feature 001's realtime WebSocket contract](../../001-role
 }
 ```
 
-The backend validates the URL shape and tab title, obtains sheet metadata and values, discovers a unique header row, validates 1–100 unique non-empty IDs, and constructs a candidate import. Only a completely valid candidate replaces the Activity's prior worksheet and question list.
+The backend validates the URL shape and tab title, obtains sheet metadata and values, and discovers a unique header row. A header is a whole cell whose value equals 題號 or 作答 after trimming surrounding whitespace; a row is a candidate only when it contains both required labels. Rows containing only one required label (even repeated) or prose that mentions a label are ignored; duplicate labels in a candidate row or multiple candidate rows are invalid. The backend then validates 1–100 unique non-empty IDs and constructs a candidate import. Only a completely valid candidate replaces the Activity's prior worksheet and question list.
 
 ### `guidedNotes.export`
 
@@ -105,7 +105,7 @@ Errors use the Feature 001 envelope: `{"type":"error","requestId":"...","payload
 | `WINNING_RESULTS_UNAVAILABLE` | Feature 003 has not made an authoritative results snapshot available; wait until results are ready and retry. No Sheets write is attempted and no target cell is cleared. |
 | `SHEET_READ_FAILED` | Temporary or unclassified read failure; check access/network and retry. |
 | `SHEET_WRITE_FAILED` | Google definitively rejected the batch; the atomic request made no changes; inspect permissions/protected cells and retry. |
-| `SHEET_WRITE_UNCONFIRMED` | The response was lost and a read-back could not determine whether the atomic batch applied; inspect the sheet before deciding whether to retry. |
+| `SHEET_WRITE_UNCONFIRMED` | The result is unknown after response loss or timeout. A timed-out write request is not cancelled and may complete after this response; inspect the sheet before deciding whether to retry. |
 | `GUIDED_NOTES_BUSY` | Another import/write is running; wait for it to finish before retrying. |
 
 Messages are in Traditional Chinese, actionable, and do not include access credentials, raw Google response bodies, or the submitted URL. Logs may include request ID, operation type, and normalized error category only.
@@ -116,5 +116,5 @@ Messages are in Traditional Chinese, actionable, and do not include access crede
 - Import commits its new worksheet/questions only after full parse and validation. Read, layout, count, or duplicate-ID failures leave the current Activity list and worksheet association unchanged.
 - Export first requires an imported worksheet reference. If it is absent, return `WORKSHEET_NOT_IMPORTED` before calling the results provider or Sheets adapter. Otherwise export requires Feature 003 to return `READY { answers }`; `READY` with `answers: []` is authoritative no-winner data, while `UNAVAILABLE` fails before any Sheets write. Export re-discovers the header row, columns and question-ID rows from the latest sheet. For every Activity question ID, there must be exactly one current row. Additional worksheet IDs outside the current Activity are ignored and never modified.
 - All winning answers and no-winner clears are represented in one batch request. Missing/duplicate target rows prevent the request from being sent. Only target `作答` cells are included.
-- A definitive Google batch rejection means no spreadsheet changes. If the response is lost, the single atomic request may have applied in full or not at all; read back all target cells. Report success only when the full intended result is confirmed, report failure only when all targets are confirmed unchanged, and otherwise report `SHEET_WRITE_UNCONFIRMED`. A mixed state is an invariant violation to report and investigate, never claim as a successful or safely retriable batch.
+- A definitive Google batch rejection means no spreadsheet changes. If the response is lost, the single atomic request may have applied in full or not at all; read back all target cells. Report success only when the full intended result is confirmed, report failure only when all targets are confirmed unchanged, and otherwise report `SHEET_WRITE_UNCONFIRMED`. A write request that is still pending when the 10-second deadline expires is not cancelled and may apply after the unconfirmed response; retain the operation lock until the request settles. A mixed state is an invariant violation to report and investigate, never claim as a successful or safely retriable batch.
 - Rejected imports do not change server Activity. Errors must not imply that an ambiguous write definitely changed or definitely left the sheet unchanged. The adapter does not provide compare-and-swap protection against an external editor changing target values between the pre-write read and batch request; this limitation is documented in the plan.

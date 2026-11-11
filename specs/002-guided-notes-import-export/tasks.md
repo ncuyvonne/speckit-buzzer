@@ -60,7 +60,7 @@ description: "Task list for Feature 002 Guided Notes import and export"
 
 ### Implementation for User Story 1
 
-- [X] T014 [P] [US1] Implement pure header and question extraction in `backend/src/guided-notes/worksheet-parser.ts`; find exactly one row with one trimmed `題號` and one trimmed `作答`, preserve non-whitespace IDs exactly, ignore rows without IDs, reject duplicate IDs with each ID and its source row numbers, reject zero valid IDs, and enforce the inclusive 1–100 limit.
+- [X] T014 [P] [US1] Implement pure header and question extraction in `backend/src/guided-notes/worksheet-parser.ts`; find exactly one candidate row containing one whole-cell, trimmed 題號 and one whole-cell, trimmed 作答, ignore noncandidate rows even when one required label repeats, and reject duplicate labels in candidate rows or multiple candidate rows, preserve non-whitespace IDs exactly, ignore rows without IDs, reject duplicate IDs with each ID and its source row numbers, reject zero valid IDs, and enforce the inclusive 1–100 limit.
 - [X] T015 [P] [US1] Implement service-account client creation and worksheet metadata/value reads in `backend/src/integrations/google-sheets/adapter.ts`; use `FORMATTED_VALUE`, quote tab names safely in A1 ranges, scan the selected tab's full grid, and keep all credentials server-side.
 - [X] T016 [P] [US1] Extend `backend/src/domain/activity-state.ts` so its initial import state is `worksheet=null`, `questions=[]`, count 0; successful imports atomically set the worksheet and 1–100 ordered, unique, non-empty question IDs, deriving count from the array only after full validation and a final server-side PREPARING-stage check.
 - [X] T017 [US1] Implement `GuidedNotesService.importWorksheet` in `backend/src/guided-notes/service.ts`; validate the sheet read and parsed candidate before replacing Activity state, and return the ordered IDs/count only after commit.
@@ -234,3 +234,11 @@ Do not start a later phase until all tests in the preceding story checkpoint pas
 ## Phase 8: Convergence
 
 - [X] T043 Update `diagrams/002-guided-notes-sequence-export.puml` to route an ambiguous response from any write attempt, including a retry after a definite rejection, through target-cell read-back and the confirmed-success/unchanged/unconfirmed outcomes; regenerate its PNG per FR-014, SC-007 and Constitution V (partial).
+
+## Phase 9: PR #2 review corrections
+
+- [X] T044 Clarify in spec.md, service error messages, and guided-notes-errors.spec.ts that a write timeout is unconfirmed rather than failed; a pending API request may still apply, and its operation lock remains held until settlement.
+- [X] T045 Define header candidates by exact trimmed whole-cell labels and require both headers on the same row; ignore label mentions and duplicate partial labels on noncandidate rows, and cover this boundary in parser tests and contracts.
+- [X] T046 Add an export integration fixture with the header on row 5, 題號 in column C, 作答 in column E, and adjacent content that must remain unchanged.
+- [X] T047 Align import/export PlantUML sequence diagrams with per-read retry boundaries, the missing/mismatched sheetId SHEET_NOT_FOUND branch, and late pending-write timeout behavior; regenerate and inspect both PNGs.
+- [ ] T048 On Node 24, run the related/full validation gates, record actual results in this quickstart, update PR #2's body, push the original PR branch, and request mini-duan's follow-up review without merging.

@@ -165,6 +165,42 @@ describe('Guided Notes answer export integration', () => {
     });
   });
 
+  it('exports correctly when headers are on row 5 and answer/question columns are E and C', async () => {
+    const alternateFixture: FakeWorksheetFixture = {
+      worksheet,
+      rowCount: 12,
+      columnCount: 6,
+      cells: {
+        A1: '課程名稱',
+        A2: '欄位說明：題號與作答',
+        C5: ' 題號 ', E5: ' 作答 ', F5: '題目敘述',
+        C6: '1', E6: '舊答案一', F6: '第一題',
+        C8: '2', E8: '舊答案二', F8: '第二題',
+        C10: '4', E10: '舊答案四', F10: '第四題',
+        D5: { value: '不應改動', displayValue: '不應改動', note: '標題旁資料' },
+      },
+    };
+    const sheets = new FakeGoogleSheetsAdapter([alternateFixture]);
+    const { port } = await start(sheets);
+    const teacher = await connect(port);
+    await login(teacher);
+
+    expect(await exportAndReceive(teacher, 'alternate-layout')).toMatchObject({
+      type: 'guidedNotes.exported',
+      requestId: 'alternate-layout',
+      payload: { writtenCellCount: 2, clearedCellCount: 1 },
+    });
+    expect(sheets.requestedWriteRanges).toEqual([['E6', 'E8', 'E10']]);
+    expect(sheets.getCellState(worksheet, 'E6').value).toBe('本次答案一');
+    expect(sheets.getCellState(worksheet, 'E8').value).toBe('');
+    expect(sheets.getCellState(worksheet, 'E10').value).toBe('本次答案四');
+    expect(sheets.getCellState(worksheet, 'C8').value).toBe('2');
+    expect(sheets.getCellState(worksheet, 'F6').value).toBe('第一題');
+    expect(sheets.getCellState(worksheet, 'D5')).toMatchObject({
+      value: '不應改動', note: '標題旁資料',
+    });
+  });
+
   it('returns WORKSHEET_NOT_IMPORTED before calling the results provider or Sheets adapter', async () => {
     const sheets = new FakeGoogleSheetsAdapter();
     const provider = new FakeWinningResultsProvider({ status: 'READY', answers: readyAnswers });

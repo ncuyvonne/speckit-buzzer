@@ -57,7 +57,7 @@ const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   WINNING_RESULTS_UNAVAILABLE: '搶答結果尚未就緒，請稍後再試；目前不會寫入學習單。',
   QUESTION_TARGET_INVALID: '工作表中的活動題號無法唯一對應，請修正後再試。',
   SHEET_WRITE_FAILED: '試算表拒絕寫入，資料未變更；請檢查編輯權限或受保護儲存格。',
-  SHEET_WRITE_UNCONFIRMED: '寫回結果未確認，請先檢查試算表再決定是否重試。',
+  SHEET_WRITE_UNCONFIRMED: '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

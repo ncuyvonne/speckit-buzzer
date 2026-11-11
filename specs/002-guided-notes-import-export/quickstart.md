@@ -43,7 +43,7 @@ Prepare a disposable worksheet with:
 - question IDs `1`, `2`, and `4`, with a blank row between them;
 - one existing value in a target answer cell and a formula/value in a non-target cell.
 
-Expected: import reports 3 questions in source row order. Then use variants with a missing/duplicate header, duplicate question ID, no valid ID, or 101 valid IDs. Each invalid import shows a repair hint and leaves the previously imported Activity list unchanged.
+Expected: import reports 3 questions in source row order. Also try a sheet with a noncandidate row containing duplicate 題號 labels and another explanatory cell mentioning 題號/作答, followed by one valid header row; these labels must not cause a false ambiguity. Then use variants with a missing/duplicate header in a candidate row, duplicate question ID, no valid ID, or 101 valid IDs. Each invalid import shows a repair hint and leaves the previously imported Activity list unchanged.
 
 ## Export scenarios
 
@@ -53,8 +53,10 @@ Use an injected server-side Feature 003 results provider with `READY` results fo
 - the no-winner target cell is cleared, including any old text;
 - only target `作答` cells change; the header, other values, formulas and formatting stay intact;
 - missing or duplicate current target IDs reject before any write;
+- an alternate layout with headers on row 5 (題號 in column C and 作答 in column E), nonconsecutive IDs, and a label-like explanatory note writes only the corresponding E-column answer cells while preserving neighboring content;
 - a simulated definite rejection changes no target cells and does not display success;
 - response loss followed by full intended read-back reports success, full unchanged read-back reports failure, and unavailable or mixed read-back reports `SHEET_WRITE_UNCONFIRMED` without a success state.
+- a batch still pending at the 10-second deadline returns `SHEET_WRITE_UNCONFIRMED`; the request is not cancelled and may finish after the response. The UI tells the teacher to inspect the sheet before retrying, and the operation lock remains held until the pending request settles.
 
 Also end an activity with no imported worksheet and attempt export. Expect `WORKSHEET_NOT_IMPORTED`; assert neither the results provider nor Sheets adapter is called, and the UI tells the teacher to import a worksheet first.
 
@@ -142,3 +144,17 @@ The live credential and spreadsheet PoC is pending; no Google project, service a
 - `$speckit-analyze` after convergence edits — no findings. Coverage: 17 FR + 8 buildable SC and 16 acceptance scenarios mapped to tasks; 43 task IDs; 100% requirement coverage; no constitution alignment issues, ambiguities, duplications, or unmapped tasks.
 - Final `$speckit-converge` for `specs/002-guided-notes-import-export/` — converged with no remaining implementation or documentation tasks. No app source changed during convergence, so the Phase 6 typecheck, Vitest, E2E, build and live benchmark results above remain the current application evidence.
 - T039 is complete. T040 remains the PR submission/review gate; the PR must remain unmerged until review is complete.
+
+
+## PR #2 review correction validation (2026-11-11)
+
+- Validation environment: Windows PowerShell, Node v24.22.0, npm 11.19.1.
+- npm run typecheck — passed for frontend and backend.
+- npm run test — passed; backend Vitest 15 files / 87 tests passed. Frontend Vitest found no configured tests/**/*.test.ts files and exited successfully.
+- npm run test:e2e --workspace @speckit-buzzer/frontend -- --reporter=line — passed, 27/27 Playwright tests. The run used a local Vite server on loopback port 5187 with PLAYWRIGHT_PORT=5187, PLAYWRIGHT_TEST_ORIGIN=http://127.0.0.1:5187, and PLAYWRIGHT_EXTERNAL_SERVER=1; the server was stopped after the run.
+- npm run build — passed; Vite production build and backend TypeScript build completed.
+- git diff --check and PlantUML -checkonly for the updated import/export sequence diagrams — passed.
+- The parser unit case confirms that duplicate labels on a row without both required headers and explanatory prose mentioning the labels are ignored when one valid candidate header row exists. The export integration case passes with the header on row 5, question IDs in column C, answers in column E, and adjacent values/notes unchanged.
+- The delayed-write integration case confirms that expiry of the 10-second deadline returns SHEET_WRITE_UNCONFIRMED, does not cancel the pending batch, holds the operation lock until settlement, and allows the pending write to complete afterward. The Playwright error case checks the teacher-facing warning that the batch may already have applied or may still finish.
+- The revised import and export sequence PNGs were regenerated with the Java 8-compatible PlantUML JAR and visually inspected.
+- T044–T047 are complete. T048 remains in progress until the updated branch and PR description are pushed and the follow-up review request is submitted. PR #2 must remain open and unmerged while review is pending.

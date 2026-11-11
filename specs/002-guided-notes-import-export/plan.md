@@ -118,10 +118,10 @@ backend/
 1. **活動狀態**：沿用 001 的 Activity 記憶體狀態。匯入先在暫存資料完成所有解析和驗證，提交前再次確認伺服器階段仍為 PREPARING，成功後才替換題目清單與工作表參照；若 Sheets 讀取／解析失敗或活動階段期間已改變，現有活動不變。伺服器重啟後按 001 規則開始新活動，不保證還原上一份工作表。
 2. **工作表參照**：老師貼上 Google Sheets URL 並從工作表名稱選擇分頁。後端解析 spreadsheet ID 並檢查工作表名稱，瀏覽器不接受憑證或 API access token。
 3. **認證**：本機服務帳戶 JSON 由 `GOOGLE_SERVICE_ACCOUNT_JSON` 環境變數提供；範圍限 Google Sheets API。老師需將要使用的試算表分享給該服務帳戶。因專題要求憑證由環境變數提供且系統本機單人操作，先不導入 OAuth 同意頁、refresh token 儲存或 Google Picker。
-4. **讀取及識別**：後端查詢工作表 grid 尺寸並暫時讀取所選分頁值；以 `FORMATTED_VALUE` 保留可見題號文字。標題列需唯一且同列同時有兩個唯一標題。題號 ID 精確比對；匯入 1–100 個非空唯一 ID，空白列跳過，零題或超過 100 題拒絕。為找動態標題而暫時讀取的格子不會成為活動資料、瀏覽器回應或業務輸入；只保存題號、題數及來源參照。
-5. **寫回及原子性**：先確認活動已有成功匯入的 WorksheetReference；若無，回傳 `WORKSHEET_NOT_IMPORTED` 並在呼叫結果 provider 或 Sheets adapter 前停止。重新掃描目前工作表，對每個活動題號要求唯一列，先建好全部目標 ranges；任一標題／題號映射失敗則不呼叫寫入。全部答案和無人答題的空字串清除放入單一 `spreadsheets.values.batchUpdate`，`valueInputOption=RAW`，不拆成多個批次或另發 `batchClear`。Google API 對 Sheets requests 提供原子套用；明確拒絕表示沒有更新，回應遺失則讀回目標格：全數符合預期才回報成功、全數未變才回報失敗，仍不確定時顯示 `SHEET_WRITE_UNCONFIRMED`。
+4. **讀取及識別**：後端查詢工作表 grid 尺寸並暫時讀取所選分頁值；以 `FORMATTED_VALUE` 保留可見題號文字。只有整格修剪前後空白後精確等於「題號」或「作答」才算標題。只有同一列含兩種必要標題才是候選列；只含一種標題的說明／資料列不構成候選，也不因該標題重複而拒絕。候選列各自必須只有一個兩種標題，且候選列唯一。題號 ID 精確比對；匯入 1–100 個非空唯一 ID，空白列跳過，零題或超過 100 題拒絕。為找動態標題而暫時讀取的格子不會成為活動資料、瀏覽器回應或業務輸入；只保存題號、題數及來源參照。
+5. **寫回及原子性**：先確認活動已有成功匯入的 WorksheetReference；若無，回傳 `WORKSHEET_NOT_IMPORTED` 並在呼叫結果 provider 或 Sheets adapter 前停止。重新掃描目前工作表，對每個活動題號要求唯一列，先建好全部目標 ranges；任一標題／題號映射失敗則不呼叫寫入。全部答案和無人答題的空字串清除放入單一 `spreadsheets.values.batchUpdate`，`valueInputOption=RAW`，不拆成多個批次或另發 `batchClear`。Google API 對 Sheets requests 提供原子套用；明確拒絕表示沒有更新，回應遺失則讀回目標格：全數符合預期才回報成功、全數未變才回報失敗，仍不確定時顯示 `SHEET_WRITE_UNCONFIRMED`。若 10 秒期限在批次請求仍 pending 時屆滿，服務回報未確認；期限不會取消已送出的 API 請求，該請求可能在回覆後完成。操作鎖維持到原請求結束，老師須先檢查工作表再決定是否重試。
 6. **操作序列**：一次只允許一個 Guided Notes 外部操作；使用後端操作鎖避免同活動同時匯入／寫回。階段及老師權限均於 server 收到訊息時驗證，不接受 client 提供的 stage 或搶答結果。
-7. **錯誤與重試**：外部錯誤映射到固定錯誤代碼和可行動訊息，log 只記錯誤分類及 requestId，不記 URL query、憑證或原始 API response。僅對 idempotent reads 或明確確認未套用的寫入拒絕重試；每個 request 最多重試兩次，退避 250 ms、500 ms，整個 operation 以 10 秒為 deadline 並把 read-back 計入期限。寫入結果不確定時先讀回且不盲目重送；期限耗盡則回報可判定的失敗或未確認。
+7. **錯誤與重試**：外部錯誤映射到固定錯誤代碼和可行動訊息，log 只記錯誤分類及 requestId，不記 URL query、憑證或原始 API response。僅對 idempotent reads 或明確確認未套用的寫入拒絕重試；每個 request 最多重試兩次，退避 250 ms、500 ms，整個 operation 以 10 秒為 deadline 並把 read-back 計入期限。寫入結果不確定時先讀回且不盲目重送；若期限在已送出的批次請求結束前屆滿，回報 `SHEET_WRITE_UNCONFIRMED`，明確告知該請求可能在逾時回覆後完成，並保留操作鎖至請求結束；老師應先檢查工作表再決定是否重試。
 
 ## 實作前驗證與順序
 

@@ -106,6 +106,7 @@ test('unconfirmed batch write tells the teacher to inspect the sheet and never s
 
   await confirmExport(page);
   await expect(page.getByRole('alert')).toContainText('結果未確認');
+  await expect(page.getByRole('alert')).toContainText('可能已套用或仍會完成');
   await expect(page.getByText(/寫回完成/)).toHaveCount(0);
   expect(guidedNotesSheets.writeBatches).toHaveLength(1);
 });

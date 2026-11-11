@@ -29,6 +29,24 @@ describe('parseWorksheet', () => {
     expect(JSON.stringify(parsed.questions)).not.toContain('題目一');
   });
 
+  it('ignores header-like labels on rows that do not contain both required headers', () => {
+    const parsed = parseWorksheet([
+      ['題號', '說明', '題號'],
+      ['課程內容', '題號與作答欄位說明', ''],
+      ['作答', '題號', '題目敘述'],
+      ['舊答案一', '1', '題目一'],
+    ]);
+
+    expect(parsed.layout).toMatchObject({
+      headerRowNumber: 3,
+      answerColumnNumber: 1,
+      questionColumnNumber: 2,
+    });
+    expect(parsed.questions).toEqual([
+      { questionId: '1', displayOrder: 1, sourceRowAtImport: 4 },
+    ]);
+  });
+
   it('rejects duplicate displayed IDs with all source rows in the error', () => {
     let thrown: unknown;
     try {

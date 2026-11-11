@@ -97,7 +97,7 @@ function createDeadlineError(context: OperationContext): GuidedNotesServiceError
   if (context.writeMayHaveApplied) {
     return new GuidedNotesServiceError(
       'SHEET_WRITE_UNCONFIRMED',
-      '寫回超過 10 秒，結果未確認；請先檢查試算表再決定是否重試。',
+      '寫回超過 10 秒，結果未確認；批次可能仍會完成。請先檢查試算表，再決定是否重試。',
     );
   }
   return new GuidedNotesServiceError(
@@ -227,7 +227,6 @@ export class GuidedNotesService {
       try {
         await write();
         context.writeMayHaveApplied = false;
-        this.#assertBeforeDeadline(context);
         return;
       } catch (error) {
         if (getWriteOutcome(error) !== 'DEFINITELY_NOT_APPLIED') throw error;
@@ -325,7 +324,7 @@ export class GuidedNotesService {
           } catch {
             throw new GuidedNotesServiceError(
               'SHEET_WRITE_UNCONFIRMED',
-              '寫回結果未確認，請先檢查試算表再決定是否重試。',
+              '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',
             );
           }
 
@@ -342,7 +341,7 @@ export class GuidedNotesService {
           }
           throw new GuidedNotesServiceError(
             'SHEET_WRITE_UNCONFIRMED',
-            '寫回結果未確認，請先檢查試算表再決定是否重試。',
+            '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',
           );
         }
       });
@@ -450,7 +449,7 @@ function normalizeExportError(error: unknown): GuidedNotesServiceError {
     return new GuidedNotesServiceError('SHEET_WRITE_FAILED', '試算表拒絕寫入，資料未變更；請檢查編輯權限或受保護儲存格。');
   }
   if (fakeErrorKind === 'AMBIGUOUS_WRITE') {
-    return new GuidedNotesServiceError('SHEET_WRITE_UNCONFIRMED', '寫回結果未確認，請先檢查試算表再決定是否重試。');
+    return new GuidedNotesServiceError('SHEET_WRITE_UNCONFIRMED', '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。');
   }
   if (error instanceof GoogleSheetsIntegrationError) {
     const messages: Partial<Record<GuidedNotesServiceErrorCode, string>> = {
@@ -459,7 +458,7 @@ function normalizeExportError(error: unknown): GuidedNotesServiceError {
       SHEET_NOT_FOUND: '找不到原本匯入的試算表或工作表分頁，請檢查網址與分頁名稱。',
       SHEET_READ_FAILED: '目前無法讀取試算表，請檢查網路或存取權限後再試。',
       SHEET_WRITE_FAILED: '試算表拒絕寫入，資料未變更；請檢查編輯權限或受保護儲存格。',
-      SHEET_WRITE_UNCONFIRMED: '寫回結果未確認，請先檢查試算表再決定是否重試。',
+      SHEET_WRITE_UNCONFIRMED: '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',
     };
     return new GuidedNotesServiceError(error.code, messages[error.code] ?? '目前無法完成試算表操作，請稍後再試。');
   }
