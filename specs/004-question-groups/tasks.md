@@ -201,4 +201,4 @@ Task: "T022 export browser tests in frontend/tests/e2e/guided-notes-export.spec.
 
 - [X] T035 Accept full-width, half-width, and mixed-style group markers; reject mismatched delimiters; cover all forms in parser tests and align the worksheet contract wording with the mixed-style rule.
 - [X] T036 Preserve no-winner group placeholders with no answer-cell writes while still clearing no-winner single cells; cover initial and repeated exports in mapping, service integration, Playwright, and live Sheets tests.
-- [ ] T037 Update PR evidence with exact 16,384/16,385-byte boundary coverage, explain the `sb004` metadata and reimport guard/reset tradeoff, check whether the actual teacher worksheet fixture is available, and request a new review. Do not substitute a synthetic fixture for an unavailable source template.
+- [X] T037 Update PR evidence with exact 16,384/16,385-byte boundary coverage, explain the `sb004` metadata and reimport guard/reset tradeoff, check whether the actual teacher worksheet fixture is available, and request a new review. Do not substitute a synthetic fixture for an unavailable source template.
