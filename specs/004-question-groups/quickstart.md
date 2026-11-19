@@ -83,7 +83,7 @@ The new US2 cases were first run before implementation: 5 new backend cases fail
 | Command | Observed result |
 | --- | --- |
 | `npm run typecheck` | Frontend and backend TypeScript checks passed |
-| `npm test` | Frontend: 2 files / 10 tests passed. Backend: 23 files / 153 tests passed |
+| `npm test` | Frontend: 2 files / 10 tests passed. Backend: 23 files / 154 tests passed |
 | `npm run test:e2e` | 37 Playwright tests passed, including mixed import/submission/export and missing-anchor repeat rejection |
 | `npm run build` | Frontend Vite build and backend TypeScript build passed |
 
@@ -101,7 +101,7 @@ npm run build
 
 Expected coverage:
 
-- Backend Vitest: mixed single/group parsing and one-marker/20/21-slot boundaries; import-service minimum-envelope boundaries at 16,384/16,385 bytes; `sb004` rejection and unrelated-metadata acceptance; unauthorized/wrong-stage rejection before Sheets access; atomic failed import; exact slot mapping; anchor and coordinate validation; same-activity re-export and no-winner clears.
+- Backend Vitest: mixed single/group parsing with full-width, half-width and mixed markers; one-marker/20/21-slot boundaries; import-service minimum-envelope boundaries at 16,384/16,385 bytes; `sb004` rejection and unrelated-metadata acceptance; unauthorized/wrong-stage rejection before Sheets access; atomic failed import; exact slot mapping; anchor and coordinate validation; same-activity re-export, no-winner single clears and no-winner group marker preservation.
 - Buzzer service/integration: reject partial or blank vectors without state changes; accept a complete vector once regardless of answer correctness; do not score; preserve original answer strings; assign rank only from server receive order; reject duplicates; keep teacher, student-own, and ended-result projections role-safe.
 - Transport: for group messages sized at 16,384 and 16,385 UTF-8 bytes, include Chinese and JSON-escaped characters. Check exact-limit acceptance, an over-limit browser draft with no message and no pending state, then successful submission after shortening. Inject an over-limit raw message to confirm server-side rejection with no receipt, lock or rank. Keep the single-answer regression cases.
 - Export integration: submit answers through the real buzzer path, then assert the first adapter batch includes every value/clear and the original anchors. Verify a stable repeat uses the same target coordinates and creates zero new anchors. Change the fake layout by inserting a blank row among cleared child slots, moving/deleting rows or columns, or removing an anchor; each unverifiable repeat sends zero batches. A target-cell-value-only edit after confirmation must not invalidate the mapping; the repeat overwrites it with the activity result. Include literal answers starting with `=`, definite rejection, acknowledged commit, lost-response commit verified by anchors and intended raw values, PREPARED promotion without a second batch, and still-unconfirmed results that retain PREPARED and send no new batch.
@@ -113,7 +113,7 @@ The frontend Vitest project currently uses a Node environment without a DOM simu
 
 Use only a **one-use disposable spreadsheet**. The benchmark writes Feature 004 `sb004` developer-metadata anchors which persist after the answer cells are restored, so do not reuse this worksheet for another activity or benchmark run.
 
-The repository includes `backend/scripts/guided-notes-service-benchmark.mjs`. It times the real backend import and export service calls separately, exports one winner for the first question and clears the other questions, restores the original answer-cell values, and verifies that restoration. Make the first question a single-answer question so the benchmark winner has one answer; include at least two groups with different slot counts after it so export also measures clearing grouped targets.
+The repository includes `backend/scripts/guided-notes-service-benchmark.mjs`. It times the real backend import and export service calls separately, exports one winner for the first question, clears other unanswered single questions, preserves no-winner group markers without sending cell writes for them, restores the original answer-cell values, and verifies that restoration. Make the first question a single-answer question so the benchmark winner has one answer; include at least two groups with different slot counts after it so export also measures mapping and anchoring grouped targets.
 
 Create a disposable Google spreadsheet and share it with the service account's `client_email` as an Editor. Enable the Google Sheets API for that service-account project. In one worksheet tab, create up to 100 unique top-level question IDs (preferably 100 for the reference run), with the entire grid within 1,000 rows × 26 columns. For example, use a single-answer first question, a two-slot group, a three-slot group, then enough single-answer questions to reach 100 total. Put `題號` and `作答` in the header row; put each fullwidth marker such as `（1）` in its own `作答` cell, with child rows directly below the group start and blank `題號` cells. Keep every target cell inside the scratch range configured below.
 
@@ -137,23 +137,31 @@ The script must print `GUIDED_NOTES_SERVICE_BENCHMARK=PASS` and `scratch_targets
 - The existing Feature 002 disposable workbook was still accessible to the configured service account. A read-only Sheets API request confirmed the selected tab exists and its grid is `1000x26`; a temporary-tab create/delete also confirmed edit access.
 - Generated a temporary tab with 100 top-level question IDs: a single-answer first question, a 2-slot group, a 3-slot group, and 97 additional single-answer questions. Ran the real `GuidedNotesService` and Google Sheets adapter with no injected network delay or transient API failure.
 - The first synthetic run exposed a benchmark assertion that counted questions instead of answer target cells when groups were present. The script now calculates clear targets from each question's slot count; the successful timing below is from the rerun after that correction.
-- Output: `GUIDED_NOTES_SERVICE_BENCHMARK=PASS`; `question_count=100`; `grid=1000x26`; `import_ms=1085`; `export_ms=1487`; `scratch_targets_restored=true`; `temporary_tab_removed=true`.
+- Output: `GUIDED_NOTES_SERVICE_BENCHMARK=PASS`; `question_count=100`; `grid=1000x26`; `import_ms=1033`; `export_ms=1498`; `scratch_targets_restored=true`; `temporary_tab_removed=true`.
 - The temporary tab was deleted after the run, removing its temporary export anchors. The existing Feature 002 worksheet tab was not modified.
 
 #### Observed live anchor validation (2026-11-19)
 
 - Command: `node --env-file=C:/Users/USER/Desktop/speckit_buzzer/.env backend/scripts/guided-notes-live-anchor-validation.mjs` from the repository root. The script creates a temporary `1000x26` tab, runs the real `GuidedNotesService` and Google Sheets adapter, then deletes the tab.
-- Fixture: one single-answer question, a 2-slot winning group, a 3-slot no-winner group, and one no-winner single question. First export wrote 3 target cells and cleared 4 group/single target cells.
+- Fixture: one winning single, a 2-slot winning group, a 3-slot no-winner group, and one no-winner single. First export wrote 3 answer cells, cleared the one no-winner single, and left all three no-winner group markers unchanged.
 - Edited only the first winning group target value, then repeated export in the same activity. The service rewrote the original answer vector and the sheet's `sb004` anchor count stayed unchanged.
 - Inserted a row between the group's original slots. The next repeat returned `QUESTION_TARGET_INVALID`; the adapter sent zero export batches and the post-rejection answer-cell snapshot matched the pre-request snapshot.
-- Output: `LIVE_ANCHOR_VALIDATION=PASS`; `target_value_only_repeat=PASS`; `anchor_count_unchanged_on_repeat=true`; `structural_change_rejected=QUESTION_TARGET_INVALID`; `rejected_repeat_batches=0`; `temporary_tab_removed=true`. The existing Feature 002 worksheet tab was not modified.
+- Output: `LIVE_ANCHOR_VALIDATION=PASS`; `first_export_written=3`; `first_export_cleared=1`; `target_value_only_repeat=PASS`; `anchor_count_unchanged_on_repeat=true`; `structural_change_rejected=QUESTION_TARGET_INVALID`; `rejected_repeat_batches=0`; `temporary_tab_removed=true`. The existing Feature 002 worksheet tab was not modified.
+
+#### Post-review regression checks (2026-11-19)
+
+- `npm run test --workspace @speckit-buzzer/backend`: 23 files / 154 tests passed, including full-width, half-width and mixed marker parsing, malformed delimiter rejection, no-winner group preservation, no-winner single clearing, and exact 16,384/16,385-byte cases.
+- `npm run test --workspace @speckit-buzzer/frontend`: 2 files / 10 tests passed, including exact 16,384/16,385-byte browser transport cases.
+- `npm run test:e2e --workspace @speckit-buzzer/frontend`: 37 Playwright tests passed. Export E2E asserts the no-winner group markers remain unchanged on first and repeated export.
+- `npm run typecheck` and `npm run build`: both passed for frontend and backend.
+- The optional cell-by-cell teacher-template fixture was not added because no teacher spreadsheet file exists in either the repository worktree or the original Desktop checkout; no synthetic file was represented as the teacher's template.
 
 Under the Feature 002 reference conditions—at most 100 top-level question IDs, grid no larger than 1,000 rows × 26 columns, no injected network delay or quota/transient API error—each operation must complete in 10 seconds or less. After export, also verify:
 
 - Each winning answer replaced the matching numbered placeholder cell.
-- No-winner group slots are empty.
+- A no-winner single target is cleared; no-winner group markers stay unchanged and receive no cell write.
 - A second export during the same activity updates the same cells after verifying the original coordinates and slot mapping. Check that no new developer metadata is created on repeat.
-- In separate disposable fixtures, insert a blank row between cleared child rows or delete/move an original row or column. Verify the earlier anchors move or disappear and the next export reports a layout problem with zero changed answer cells. Also test a missing anchor and a target-value-only edit: the latter preserves identity and the repeat writes the current result to the original target.
+- In separate disposable fixtures, insert a blank row between group child rows or delete/move an original row or column. Verify the earlier anchors move or disappear and the next export reports a layout problem with zero changed answer cells. Also test a missing anchor and a target-value-only edit: the latter preserves identity and the repeat writes the current result to the original target.
 - A new activity uses an original or unexported worksheet.
 - After a Feature 004 export, attempting to import that same worksheet for a new activity is rejected because `sb004` anchors persist; a copy/original without those anchors remains importable.
 - All non-target values, formulas, notes, and formatting are unchanged.

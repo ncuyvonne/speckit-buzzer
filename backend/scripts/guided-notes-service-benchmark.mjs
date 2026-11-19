@@ -174,12 +174,11 @@ async function run() {
     restoreVerified = true;
   }
   if (exportError) throw exportError;
-  const totalTargetCellCount = activityQuestions.reduce(
-    (count, question) => count + (question.kind === 'GROUP' ? question.answerSlots.length : 1),
-    0,
-  );
+  const expectedClearedCellCount = activityQuestions.filter((question) => (
+    question.kind === 'SINGLE' && question.questionId !== winningQuestionId
+  )).length;
   assert.equal(exportResult?.writtenCellCount, 1);
-  assert.equal(exportResult?.clearedCellCount, totalTargetCellCount - 1);
+  assert.equal(exportResult?.clearedCellCount, expectedClearedCellCount);
 
   return { importMs, exportMs, questionCount: imported.questionCount, grid: `${resolved.rowCount}x${resolved.columnCount}`, restoreVerified };
 }

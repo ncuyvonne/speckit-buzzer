@@ -338,7 +338,8 @@ describe('Guided Notes worksheet import integration', () => {
     sendImport(teacher.socket, 'blocked-exported-import', 'exported-workbook');
     const blocked = await blockedImport;
     expect(String(blocked.payload.message ?? '')).toContain('原始');
-    expect(String(blocked.payload.message ?? '')).toContain('未匯出');
+    expect(String(blocked.payload.message ?? '')).toContain('佔位符已被取代');
+    expect(String(blocked.payload.message ?? '')).toContain('副本');
     expect(app.activity.questions).toEqual(previousQuestions);
     expect(app.activity.worksheet?.spreadsheetId).toBe('valid-sheet');
     expect(sheets.requestedReadRanges).toHaveLength(readCountBeforeBlock);

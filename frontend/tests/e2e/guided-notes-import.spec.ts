@@ -65,7 +65,8 @@ test('a previously exported worksheet is rejected without replacing the current 
   await url.fill('https://docs.google.com/spreadsheets/d/e2e-exported-sheet/edit');
   await page.getByRole('button', { name: '匯入題號' }).click();
   await expect(page.getByRole('alert')).toContainText('原始');
-  await expect(page.getByRole('alert')).toContainText('未匯出');
+  await expect(page.getByRole('alert')).toContainText('副本');
+  await expect(page.getByRole('alert')).toContainText('重複匯出定位');
   await expect(page.getByText('題數：3')).toBeVisible();
   await expect(worksheetList).toHaveText([
     '1（單題，1 個填空）',

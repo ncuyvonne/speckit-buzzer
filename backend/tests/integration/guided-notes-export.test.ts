@@ -166,7 +166,7 @@ describe('Guided Notes answer export integration', () => {
     });
   });
 
-  it('writes mixed single/group vectors and no-winner clears to each marker in one anchored batch', async () => {
+  it('writes winning vectors, clears a no-winner single, and preserves no-winner group placeholders', async () => {
     const groupFixture: FakeWorksheetFixture = {
       worksheet,
       rowCount: 10,
@@ -176,6 +176,7 @@ describe('Guided Notes answer export integration', () => {
         A3: '舊單題', B3: '1', C3: 'single',
         A4: '（1）', B4: '2',
         A5: '（2）', B5: '',
+        A6: '舊單題答案', B6: '3', C6: 'single no-winner',
         A7: '（1）', B7: '4',
         A8: '（2）', B8: '',
         A9: '（3）', B9: '',
@@ -187,7 +188,8 @@ describe('Guided Notes answer export integration', () => {
         { placeholderNumber: 1, sourceRowAtImport: 4 },
         { placeholderNumber: 2, sourceRowAtImport: 5 },
       ] },
-      { questionId: '4', kind: 'GROUP', displayOrder: 3, sourceRowAtImport: 7, answerSlots: [
+      { questionId: '3', kind: 'SINGLE', displayOrder: 3, sourceRowAtImport: 6, answerSlots: [{ placeholderNumber: 1, sourceRowAtImport: 6 }] },
+      { questionId: '4', kind: 'GROUP', displayOrder: 4, sourceRowAtImport: 7, answerSlots: [
         { placeholderNumber: 1, sourceRowAtImport: 7 },
         { placeholderNumber: 2, sourceRowAtImport: 8 },
         { placeholderNumber: 3, sourceRowAtImport: 9 },
@@ -203,20 +205,20 @@ describe('Guided Notes answer export integration', () => {
     const sheets = new FakeGoogleSheetsAdapter([groupFixture]);
     const { app } = await start(sheets, results, true, 'ENDED', groupQuestions);
 
-    await expect(app.guidedNotes.exportAnswers()).resolves.toEqual({ writtenCellCount: 3, clearedCellCount: 3 });
+    await expect(app.guidedNotes.exportAnswers()).resolves.toEqual({ writtenCellCount: 3, clearedCellCount: 1 });
     expect(sheets.exportBatches).toHaveLength(1);
     expect(sheets.exportBatches[0]?.writes).toEqual([
       { questionId: '1', rowNumber: 3, answerColumnNumber: 1, value: '單題答案' },
       { questionId: '2', rowNumber: 4, answerColumnNumber: 1, value: '=題組答案一' },
       { questionId: '2', rowNumber: 5, answerColumnNumber: 1, value: '題組答案二' },
-      { questionId: '4', rowNumber: 7, answerColumnNumber: 1, value: '' },
-      { questionId: '4', rowNumber: 8, answerColumnNumber: 1, value: '' },
-      { questionId: '4', rowNumber: 9, answerColumnNumber: 1, value: '' },
+      { questionId: '3', rowNumber: 6, answerColumnNumber: 1, value: '' },
     ]);
-    expect(sheets.exportBatches[0]?.anchors).toHaveLength(9);
+    expect(sheets.exportBatches[0]?.anchors).toHaveLength(10);
     expect(sheets.getCellState(worksheet, 'A4').value).toBe('=題組答案一');
     expect(sheets.getCellState(worksheet, 'A5').value).toBe('題組答案二');
-    expect(sheets.getCellState(worksheet, 'A9').value).toBe('');
+    expect(sheets.getCellState(worksheet, 'A7').value).toBe('（1）');
+    expect(sheets.getCellState(worksheet, 'A8').value).toBe('（2）');
+    expect(sheets.getCellState(worksheet, 'A9').value).toBe('（3）');
     expect(sheets.getCellState(worksheet, 'C3').value).toBe('single');
     expect(app.activity.exportAnchorState.status).toBe('CONFIRMED');
 
@@ -228,6 +230,7 @@ describe('Guided Notes answer export integration', () => {
         { questionId: '1', placeholderNumber: 1, rowNumber: 3 },
         { questionId: '2', placeholderNumber: 1, rowNumber: 4 },
         { questionId: '2', placeholderNumber: 2, rowNumber: 5 },
+        { questionId: '3', placeholderNumber: 1, rowNumber: 6 },
         { questionId: '4', placeholderNumber: 1, rowNumber: 7 },
         { questionId: '4', placeholderNumber: 2, rowNumber: 8 },
         { questionId: '4', placeholderNumber: 3, rowNumber: 9 },
@@ -241,11 +244,14 @@ describe('Guided Notes answer export integration', () => {
         { placeholderNumber: 2, answerText: '更新二' },
       ] },
     ] };
-    await expect(app.guidedNotes.exportAnswers()).resolves.toEqual({ writtenCellCount: 3, clearedCellCount: 3 });
+    await expect(app.guidedNotes.exportAnswers()).resolves.toEqual({ writtenCellCount: 3, clearedCellCount: 1 });
     expect(sheets.exportBatches).toHaveLength(2);
     expect(sheets.exportBatches[1]?.anchors).toEqual([]);
-    expect(sheets.exportBatches[1]?.writes.map((write) => write.rowNumber)).toEqual([3, 4, 5, 7, 8, 9]);
+    expect(sheets.exportBatches[1]?.writes.map((write) => write.rowNumber)).toEqual([3, 4, 5, 6]);
     expect(sheets.getCellState(worksheet, 'A4').value).toBe('更新一');
+    expect(sheets.getCellState(worksheet, 'A7').value).toBe('（1）');
+    expect(sheets.getCellState(worksheet, 'A8').value).toBe('（2）');
+    expect(sheets.getCellState(worksheet, 'A9').value).toBe('（3）');
     expect(app.activity.exportAnchorState.status).toBe('CONFIRMED');
 
     const confirmed = app.activity.exportAnchorState.status === 'CONFIRMED'

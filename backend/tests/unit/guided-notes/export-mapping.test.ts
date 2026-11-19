@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   exportAnchorMetadataValue,
+  mapAnswersToManifestWrites,
   mapActivityAnswersToTargets,
   mapActivityAnswersToWrites,
   validateConfirmedExportManifest,
@@ -151,10 +152,18 @@ describe('grouped export mapping', () => {
       .toThrow(expect.objectContaining({ code: 'QUESTION_TARGET_INVALID' }));
   });
 
-  it('maps every slot to a clear when a grouped question has no winner', () => {
+  it('marks all no-winner group targets as preserved and produces no cell writes', () => {
     const mapping = mapActivityAnswersToTargets(groupedValues, groupedQuestions, []);
     expect(mapping.targets.filter((target) => target.questionId === 'G3').map((target) => target.intendedValue))
       .toEqual([null, null, null]);
+    const group = groupedQuestions.find((question) => question.questionId === 'G3')!;
+    const noWinnerManifest: ExportManifest = {
+      worksheet: { spreadsheetId: 'sheet', sheetId: 7, worksheetTitle: 'Sheet' },
+      header: mapping.header,
+      targets: mapping.targets.filter((target) => target.questionId === 'G3'),
+      anchors: [],
+    };
+    expect(mapAnswersToManifestWrites([group], [], noWinnerManifest)).toEqual([]);
   });
 
   it('retains exact prewrite values, including a formula, separately from displayed values', () => {

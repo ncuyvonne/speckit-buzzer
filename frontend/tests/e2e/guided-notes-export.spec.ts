@@ -53,16 +53,13 @@ test('ENDED teacher confirms export and sees written and cleared counts only aft
   await expect(page.getByText(/寫回完成/)).toHaveCount(0);
   await confirmExport(page);
   await expect(page.getByText(/寫回完成/)).toBeVisible();
-  await expect(page.getByText('更新 3 格，清空 3 格')).toBeVisible();
+  await expect(page.getByText('更新 3 格，清空 0 格')).toBeVisible();
   expect(guidedNotesSheets.writeBatches).toHaveLength(1);
   expect(guidedNotesSheets.exportBatches[0]?.writes.map((write) => [write.questionId, write.rowNumber, write.value]))
     .toEqual([
       ['1', 3, '本次答案一'],
       ['2', 4, '題組二答案一'],
       ['2', 5, '題組二答案二'],
-      ['4', 7, ''],
-      ['4', 8, ''],
-      ['4', 9, ''],
     ]);
   expect(guidedNotesSheets.getCellState({
     spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
@@ -70,6 +67,15 @@ test('ENDED teacher confirms export and sees written and cleared counts only aft
   expect(guidedNotesSheets.getCellState({
     spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
   }, 'A5').value).toBe('題組二答案二');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A7').value).toBe('（1）');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A8').value).toBe('（2）');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A9').value).toBe('（3）');
   expect(guidedNotesSheets.getCellState({
     spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
   }, 'A4').value).toBe('題組二答案一');
@@ -110,12 +116,15 @@ test('confirmed export reuses anchored targets after value edits and rejects mov
     ],
   }] };
   await confirmExport(page);
-  await expect(page.getByText('更新 2 格，清空 4 格')).toBeVisible();
+  await expect(page.getByText('更新 2 格，清空 1 格')).toBeVisible();
   expect(guidedNotesSheets.exportBatches).toHaveLength(2);
   expect(guidedNotesSheets.exportBatches[1]?.writes.map((write) => write.rowNumber)).toContain(4);
   expect(guidedNotesSheets.exportBatches[1]?.anchors).toEqual([]);
   expect(guidedNotesSheets.getDeveloperMetadata(worksheet).map((anchor) => anchor.metadataId)).toEqual(firstAnchorIds);
   expect(guidedNotesSheets.getCellState(worksheet, 'A4').value).toBe('repeat 1');
+  expect(guidedNotesSheets.getCellState(worksheet, 'A7').value).toBe('（1）');
+  expect(guidedNotesSheets.getCellState(worksheet, 'A8').value).toBe('（2）');
+  expect(guidedNotesSheets.getCellState(worksheet, 'A9').value).toBe('（3）');
 
   guidedNotesSheets.insertBlankRowBefore(worksheet, 5);
   await confirmExport(page);

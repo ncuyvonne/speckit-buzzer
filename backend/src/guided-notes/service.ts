@@ -312,12 +312,19 @@ export class GuidedNotesService {
   }
 
   #exportWrites(manifest: ExportManifest): readonly AnswerCellWrite[] {
-    return manifest.targets.map((target) => ({
-      questionId: target.questionId,
-      rowNumber: target.rowNumber,
-      answerColumnNumber: target.answerColumnNumber,
-      value: target.intendedValue ?? '',
-    }));
+    const targetCounts = new Map<string, number>();
+    for (const target of manifest.targets) {
+      targetCounts.set(target.questionId, (targetCounts.get(target.questionId) ?? 0) + 1);
+    }
+    return manifest.targets.flatMap((target) => {
+      if ((targetCounts.get(target.questionId) ?? 0) > 1 && target.intendedValue === null) return [];
+      return [{
+        questionId: target.questionId,
+        rowNumber: target.rowNumber,
+        answerColumnNumber: target.answerColumnNumber,
+        value: target.intendedValue ?? '',
+      }];
+    });
   }
 
   #resultForManifest(manifest: ExportManifest): ExportAnswersResult {
@@ -394,7 +401,7 @@ export class GuidedNotesService {
         ))) {
           throw new GuidedNotesServiceError(
             'WORKSHEET_ALREADY_EXPORTED',
-            '此工作表已由題組匯出；請選擇原始或未匯出的學習單再匯入。',
+            '此工作表已匯出題組答案，原佔位符已被取代；錨點用來保護同一活動的重複匯出定位，系統不提供匯出後重設。請使用原始學習單，或從原始範本建立的副本，建立新活動。',
           );
         }
         const grid = await this.#readWithRetry(context, () => sheets.readWorksheet(resolved));
@@ -485,12 +492,16 @@ export class GuidedNotesService {
         if (state.status === 'CONFIRMED') {
           validateConfirmedExportManifest(evidence.grid.values, activity.questions, worksheet, state.manifest, evidence.metadata);
           const writes = mapAnswersToManifestWrites(activity.questions, results.answers, state.manifest);
+          const writesByCoordinate = new Map(writes.map((write) => [`${write.rowNumber}:${write.answerColumnNumber}`, write]));
           const pendingManifest: ExportManifest = {
             ...state.manifest,
-            targets: state.manifest.targets.map((target, index) => ({
+            targets: state.manifest.targets.map((target) => ({
               ...target,
               prewriteValue: worksheetCellRawValue(evidence.grid, target.rowNumber, target.answerColumnNumber),
-              intendedValue: writes[index]!.value === '' ? null : writes[index]!.value,
+              intendedValue: (() => {
+                const write = writesByCoordinate.get(`${target.rowNumber}:${target.answerColumnNumber}`);
+                return write === undefined || write.value === '' ? null : write.value;
+              })(),
             })),
           };
           const successResult = this.#resultForManifest(pendingManifest);
@@ -616,8 +627,15 @@ function manifestTargetsMatch(
   manifest: ExportManifest,
   expectedField: 'prewriteValue' | 'intendedValue',
 ): boolean {
+  const targetCounts = new Map<string, number>();
+  for (const target of manifest.targets) {
+    targetCounts.set(target.questionId, (targetCounts.get(target.questionId) ?? 0) + 1);
+  }
   return manifest.targets.every((target) => {
     if (expectedField === 'prewriteValue') {
+      return worksheetCellRawValue(grid, target.rowNumber, target.answerColumnNumber) === target.prewriteValue;
+    }
+    if (target.intendedValue === null && (targetCounts.get(target.questionId) ?? 0) > 1) {
       return worksheetCellRawValue(grid, target.rowNumber, target.answerColumnNumber) === target.prewriteValue;
     }
     return worksheetCellValue(grid, {

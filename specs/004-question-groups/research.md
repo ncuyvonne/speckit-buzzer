@@ -26,9 +26,9 @@
 - A new isolated service for group answers: rejected because it would duplicate the existing answer lock, winner, and projection logic.
 - Client-side winner/rank selection: rejected because Feature 003 and the project constitution require server-authoritative ordering.
 
-### R3. Parse displayed worksheet values and write all targets as one literal-value batch
+### R3. Parse displayed worksheet values and batch applicable answer writes with anchors
 
-**Decision**: Import the selected sheet using displayed values for dynamic `題號` and `作答` discovery and full-width marker parsing. For export, use one `spreadsheets.batchUpdate` containing value-only `UpdateCellsRequest` operations. Write literal `stringValue` entries and clear the `userEnteredValue` field for no-winner slots. Include anchor creation in the first batch.
+**Decision**: Import the selected sheet using displayed values for dynamic `題號` and `作答` discovery and marker parsing that accepts full-width `（n）` and ASCII `(n)` parentheses, including mixed styles. For export, use one `spreadsheets.batchUpdate` containing value-only `UpdateCellsRequest` operations and anchor creation. Write literal `stringValue` entries for winners, clear no-winner single-answer targets, and omit no-winner group cells so the original placeholders remain.
 
 **Rationale**: Displayed values preserve the worksheet notation. The spreadsheet batch combines all writes and first-export anchor creation atomically. Use a field mask of `userEnteredValue` and exact target ranges. This uses the same literal text semantics as RAW and preserves non-target cells. Atomicity applies to operations inside the batch, while the earlier worksheet read remains separate.
 

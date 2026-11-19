@@ -109,7 +109,7 @@ describe('parseWorksheet', () => {
     const parsed = parseWorksheet([
       ['課程', ''],
       [' 作答 ', ' 題號 ', '題目敘述'],
-      ['(1)', 'S-1', 'ASCII parentheses remain an ordinary single answer'],
+      ['ordinary answer', 'S-1', 'single question'],
       ['（1）', 'G-2', ''],
       ['（2）', '', ''],
       ['', '', 'spacer'],
@@ -151,6 +151,12 @@ describe('parseWorksheet', () => {
 
   it('rejects one-slot, missing, repeated, reversed, orphaned, and non-contiguous groups with question and row guidance', () => {
     const invalidLayouts = [
+      {
+        name: 'mixed opening and closing delimiters',
+        rows: [['題號', '作答'], ['Q-mixed-delimiter', '（1)'], ['', '(2)']],
+        questionId: 'Q-mixed-delimiter',
+        row: '2',
+      },
       {
         name: 'one marker',
         rows: [['題號', '作答'], ['Q-one', '（1）'], ['Q-next', '']],
@@ -200,6 +206,22 @@ describe('parseWorksheet', () => {
       expect((thrown as Error).message, invalid.name).toContain(invalid.questionId);
       expect((thrown as Error).message, invalid.name).toContain(`第 ${invalid.row} 列`);
     }
+  });
+
+  it('accepts half-width and full-width group placeholders, including mixed styles', () => {
+    const parsed = parseWorksheet([
+      ['題號', '作答'],
+      ['G-ascii', '(1)'],
+      ['', '(2)'],
+      ['G-mixed', '(1)'],
+      ['', '（2）'],
+      ['', '(3)'],
+    ]);
+
+    expect(parsed.questions).toMatchObject([
+      { questionId: 'G-ascii', kind: 'GROUP', answerSlots: [{ placeholderNumber: 1 }, { placeholderNumber: 2 }] },
+      { questionId: 'G-mixed', kind: 'GROUP', answerSlots: [{ placeholderNumber: 1 }, { placeholderNumber: 2 }, { placeholderNumber: 3 }] },
+    ]);
   });
 
   it('accepts 20 group slots and rejects a 21st slot', () => {

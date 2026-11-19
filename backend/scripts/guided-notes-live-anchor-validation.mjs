@@ -112,8 +112,16 @@ try {
 
   const first = await service.exportAnswers();
   assert.equal(first.writtenCellCount, 3);
-  assert.equal(first.clearedCellCount, 4);
+  assert.equal(first.clearedCellCount, 1);
   assert.equal(serviceBatchCount, 1);
+  const afterFirstExport = await readMatrix();
+  assert.equal(afterFirstExport[1][1], 'SINGLE_WINNER');
+  assert.equal(afterFirstExport[2][1], 'GROUP_2_SLOT_1');
+  assert.equal(afterFirstExport[3][1], 'GROUP_2_SLOT_2');
+  assert.equal(afterFirstExport[4][1], '（1）');
+  assert.equal(afterFirstExport[5][1], '（2）');
+  assert.equal(afterFirstExport[6][1], '（3）');
+  assert.equal(afterFirstExport[7][1], '');
   const anchorsAfterFirst = await anchorCount();
   assert.ok(anchorsAfterFirst > 0);
 
@@ -125,16 +133,16 @@ try {
   });
   const repeat = await service.exportAnswers();
   assert.equal(repeat.writtenCellCount, 3);
-  assert.equal(repeat.clearedCellCount, 4);
+  assert.equal(repeat.clearedCellCount, 1);
   assert.equal(serviceBatchCount, 2);
   assert.equal(await anchorCount(), anchorsAfterFirst);
   const afterValueRepeat = await readMatrix();
   assert.equal(afterValueRepeat[1][1], 'SINGLE_WINNER');
   assert.equal(afterValueRepeat[2][1], 'GROUP_2_SLOT_1');
   assert.equal(afterValueRepeat[3][1], 'GROUP_2_SLOT_2');
-  assert.equal(afterValueRepeat[4][1], '');
-  assert.equal(afterValueRepeat[5][1], '');
-  assert.equal(afterValueRepeat[6][1], '');
+  assert.equal(afterValueRepeat[4][1], '（1）');
+  assert.equal(afterValueRepeat[5][1], '（2）');
+  assert.equal(afterValueRepeat[6][1], '（3）');
   assert.equal(afterValueRepeat[7][1], '');
 
   await sheetsClient.spreadsheets.batchUpdate({

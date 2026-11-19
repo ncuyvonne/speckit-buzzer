@@ -31,8 +31,8 @@ const QUESTION_HEADER = '題號';
 const ANSWER_HEADER = '作答';
 const MAX_QUESTIONS = 100;
 const MAX_GROUP_SLOTS = 20;
-const MARKER_PATTERN = /^（(\d+)）$/u;
-const MARKER_LIKE_PATTERN = /（\d+）/u;
+const MARKER_PATTERN = /^(?:（(\d+)）|\((\d+)\))$/u;
+const MARKER_LIKE_PATTERN = /[（(]\d+[）)]/u;
 
 interface HeaderPosition {
   readonly rowIndex: number;
@@ -86,14 +86,15 @@ function findUniqueHeader(values: readonly (readonly string[])[]): HeaderPositio
 function parseMarker(value: string): number | null {
   const match = MARKER_PATTERN.exec(value);
   if (!match) return null;
-  const number = Number(match[1]);
-  return Number.isSafeInteger(number) && number > 0 && value === `（${number}）` ? number : -1;
+  const number = Number(match[1] ?? match[2]);
+  const isCanonicalMarker = value === `（${number}）` || value === `(${number})`;
+  return Number.isSafeInteger(number) && number > 0 && isCanonicalMarker ? number : -1;
 }
 
 function invalidGroup(questionId: string, rowNumber: number, detail: string): WorksheetParserError {
   return new WorksheetParserError(
     'QUESTION_IDS_INVALID',
-    `題號「${questionId}」第 ${rowNumber} 列的題組佔位符${detail}；請修正為相連列中的連續全形編號（1）至（20）後再匯入。`,
+    `題號「${questionId}」第 ${rowNumber} 列的題組佔位符${detail}；請修正為相連列中的連續全形（1）至（20）或半形 (1) 至 (20) 編號；同一題組可混用括號樣式後再匯入。`,
   );
 }
 
@@ -440,6 +441,7 @@ export function mapAnswersToManifestWrites(
     if (targets.length !== values.length || targets.some((target, index) => target.placeholderNumber !== index + 1)) {
       throw questionTargetsInvalid(`題號「${question.questionId}」的已確認答案格數量不符。`);
     }
+    if (question.kind === 'GROUP' && !winnerMap.has(question.questionId)) return [];
     return targets.map((target, index) => ({
       questionId: question.questionId,
       rowNumber: target.rowNumber,
