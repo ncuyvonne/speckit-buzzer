@@ -17,6 +17,9 @@ export type ErrorCode =
   | 'WORKSHEET_NOT_IMPORTED'
   | 'WINNING_RESULTS_UNAVAILABLE'
   | 'QUESTION_TARGET_INVALID'
+  | 'QUESTION_INVALID'
+  | 'ANSWER_EMPTY'
+  | 'ANSWER_LOCKED'
   | 'SHEET_WRITE_FAILED'
   | 'SHEET_WRITE_UNCONFIRMED';
 
@@ -59,6 +62,9 @@ export function guidedNotesRecoveryMessage(code: GuidedNotesErrorCode, serverMes
 export type ClientMessage =
   | { type: 'teacher.authenticate'; requestId: string; payload: { password: string } }
   | { type: 'student.join'; requestId: string; payload: { groupId: string } }
+  | { type: 'buzzerResults.submitAnswer'; requestId: string; payload: { questionId: string; answerText: string } }
+  | { type: 'buzzerResults.getTeacherProgress'; requestId: string; payload: Record<string, never> }
+  | { type: 'buzzerResults.getStudentResults'; requestId: string; payload: Record<string, never> }
   | { type: 'activity.advance'; requestId: string; payload: { from: ActivityStage; to: ActivityStage } }
   | {
       type: 'guidedNotes.import';
@@ -69,8 +75,20 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { type: 'activity.snapshot'; payload: { stage: ActivityStage; groups: string[] } }
+  | { type: 'buzzerResults.teacherProgress'; requestId?: string; payload: TeacherProgress }
+  | { type: 'buzzerResults.studentResults'; requestId: string; payload: StudentResults }
+  | { type: 'buzzerResults.questionList'; payload: { questionIds: string[] } }
+  | {
+      type: 'buzzerResults.ownProgress';
+      payload: { questions: Array<{ questionId: string; submitted: boolean; answerText: string | null; locked: boolean }> };
+    }
   | { type: 'teacher.authenticated'; requestId: string; payload: { ok: true } }
   | { type: 'student.joined'; requestId: string; payload: { ok: true; groupId: string } }
+  | {
+      type: 'buzzerResults.submitted';
+      requestId: string;
+      payload: { questionId: string; accepted: true; locked: true };
+    }
   | { type: 'activity.phaseChanged'; payload: { stage: ActivityStage } }
   | {
       type: 'guidedNotes.snapshot';
@@ -87,3 +105,25 @@ export type ServerMessage =
       payload: { writtenCellCount: number; clearedCellCount: number };
     }
   | { type: 'error'; requestId?: string; payload: { code: ErrorCode; message: string } };
+
+export interface TeacherProgress {
+  readonly questions: readonly {
+    readonly questionId: string;
+    readonly groups: readonly { readonly groupId: string; readonly submitted: boolean; readonly answerText: string | null }[];
+    readonly winningGroupId: string | null;
+    readonly winningAnswer: string | null;
+  }[];
+}
+
+export interface StudentQuestionResult {
+  readonly questionId: string;
+  readonly winningGroupId: string | null;
+  readonly winningAnswer: string | null;
+  readonly ownAnswer: string | null;
+  readonly ownStatus: 'SUBMITTED' | 'NOT_SUBMITTED';
+  readonly ownGroupWon: boolean;
+}
+
+export interface StudentResults {
+  readonly questions: readonly StudentQuestionResult[];
+}

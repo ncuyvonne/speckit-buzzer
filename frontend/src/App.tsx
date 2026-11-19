@@ -2,6 +2,8 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StudentJoin } from './components/StudentJoin';
 import { GuidedNotesPanel } from './components/GuidedNotesPanel';
 import { TeacherPanel } from './components/TeacherPanel';
+import { BuzzerAnswerPanel } from './components/BuzzerAnswerPanel';
+import { StudentResultsPanel } from './components/StudentResultsPanel';
 import { RealtimeClient } from './realtime/client';
 
 const STAGE_LABELS = {
@@ -13,6 +15,7 @@ const STAGE_LABELS = {
 export default function App() {
   const [client] = useState(() => new RealtimeClient());
   const state = useSyncExternalStore(client.store.subscribe, client.store.getSnapshot);
+  const buzzerState = useSyncExternalStore(client.buzzerResults.subscribe, client.buzzerResults.getSnapshot);
   const teacherError = state.serverError &&
     ['AUTH_INVALID', 'STAGE_CONFLICT'].includes(state.serverError.code)
     ? state.serverError.message
@@ -41,6 +44,7 @@ export default function App() {
           error={teacherError}
           onLogin={(password) => client.authenticate(password)}
           onAdvance={(from, to) => client.advance(from, to)}
+          resultsProgress={buzzerState.teacherProgress}
         />
       )}
       {state.role === 'TEACHER' && (
@@ -56,6 +60,19 @@ export default function App() {
           onImport={(spreadsheetUrl, worksheetTitle) => client.importWorksheet(spreadsheetUrl, worksheetTitle)}
           onExport={() => client.exportAnswers()}
         />
+      )}
+      {state.role === 'STUDENT' && (
+        <BuzzerAnswerPanel
+          groupId={state.selectedGroupId}
+          stage={state.stage}
+          connected={state.connection === 'connected'}
+          state={buzzerState}
+          onSubmit={(questionId, answerText) => client.submitAnswer(questionId, answerText)}
+          onClearError={() => client.buzzerResults.clearError()}
+        />
+      )}
+      {state.role === 'STUDENT' && state.stage === 'ENDED' && (
+        <StudentResultsPanel results={buzzerState.studentResults} />
       )}
       {state.role !== 'TEACHER' && (
         <StudentJoin

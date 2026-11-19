@@ -67,6 +67,14 @@ class UnavailableWinningResultsProvider {
   getSnapshot() = UNAVAILABLE
 }
 
+class BuzzerWinningResultsProvider <<server default>> {
+  getSnapshot()
+}
+
+class BuzzerResultsService <<Feature 003>> {
+  getWinner(questionId)
+}
+
 class WinningResultsSnapshot {
   status: READY | UNAVAILABLE
   answers: WinningAnswer[]
@@ -89,6 +97,9 @@ GoogleSheetsAdapter --> WorksheetGrid
 GoogleSheetsAdapter --> AnswerCellWrite
 GuidedNotesService --> WinningResultsProvider
 UnavailableWinningResultsProvider ..|> WinningResultsProvider
+BuzzerWinningResultsProvider ..|> WinningResultsProvider
+BuzzerWinningResultsProvider --> BuzzerResultsService : maps accepted winner
+BuzzerWinningResultsProvider --> ActivityState : checks ENDED and questions
 WinningResultsProvider --> WinningResultsSnapshot : supplies
 WinningResultsSnapshot "1" o-- "0..*" WinningAnswer
 
@@ -109,6 +120,12 @@ note right of WinningResultsSnapshot
 READY with an empty answer list means
 there are no winners. UNAVAILABLE
 blocks export before any sheet write.
+end note
+
+note left of UnavailableWinningResultsProvider
+Explicit test or fallback implementation only.
+The server uses BuzzerWinningResultsProvider
+by default.
 end note
 
 note bottom of GuidedNotesService

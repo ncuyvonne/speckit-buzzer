@@ -18,12 +18,18 @@ export type ErrorCode =
   | 'WORKSHEET_NOT_IMPORTED'
   | 'WINNING_RESULTS_UNAVAILABLE'
   | 'QUESTION_TARGET_INVALID'
+  | 'QUESTION_INVALID'
+  | 'ANSWER_EMPTY'
+  | 'ANSWER_LOCKED'
   | 'SHEET_WRITE_FAILED'
   | 'SHEET_WRITE_UNCONFIRMED';
 
 export type ClientMessage =
   | { type: 'teacher.authenticate'; requestId: string; payload: { password: string } }
   | { type: 'student.join'; requestId: string; payload: { groupId: string } }
+  | { type: 'buzzerResults.submitAnswer'; requestId: string; payload: { questionId: string; answerText: string } }
+  | { type: 'buzzerResults.getTeacherProgress'; requestId: string; payload: Record<string, never> }
+  | { type: 'buzzerResults.getStudentResults'; requestId: string; payload: Record<string, never> }
   | { type: 'activity.advance'; requestId: string; payload: { from: ActivityStage; to: ActivityStage } }
   | {
       type: 'guidedNotes.import';
@@ -56,6 +62,9 @@ const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   WORKSHEET_NOT_IMPORTED: '目前活動尚未匯入學習單，請先在準備階段匯入。',
   WINNING_RESULTS_UNAVAILABLE: '搶答結果尚未就緒，請稍後再試；目前不會寫入學習單。',
   QUESTION_TARGET_INVALID: '工作表中的活動題號無法唯一對應，請修正後再試。',
+  QUESTION_INVALID: '此題目不屬於目前活動，請重新選擇題目。',
+  ANSWER_EMPTY: '答案不可空白，請輸入答案後再送出。',
+  ANSWER_LOCKED: '本組此題答案已送出並鎖定，無法再次修改。',
   SHEET_WRITE_FAILED: '試算表拒絕寫入，資料未變更；請檢查編輯權限或受保護儲存格。',
   SHEET_WRITE_UNCONFIRMED: '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',
 };
@@ -113,6 +122,24 @@ export function decodeClientMessage(data: Buffer | ArrayBuffer | Buffer[], isBin
     case 'student.join':
       if (typeof payload.groupId !== 'string') break;
       return { ok: true, message: { type: parsed.type, requestId, payload: { groupId: payload.groupId } } };
+    case 'buzzerResults.submitAnswer':
+      if (
+        typeof payload.questionId !== 'string'
+        || typeof payload.answerText !== 'string'
+        || Object.keys(payload).some((key) => key !== 'questionId' && key !== 'answerText')
+      ) break;
+      return {
+        ok: true,
+        message: {
+          type: parsed.type,
+          requestId,
+          payload: { questionId: payload.questionId, answerText: payload.answerText },
+        },
+      };
+    case 'buzzerResults.getTeacherProgress':
+    case 'buzzerResults.getStudentResults':
+      if (Object.keys(payload).length !== 0) break;
+      return { ok: true, message: { type: parsed.type, requestId, payload: {} } };
     case 'activity.advance':
       if (
         typeof payload.from !== 'string' || !VALID_STAGES.has(payload.from as ActivityStage) ||

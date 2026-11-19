@@ -1,0 +1,60 @@
+@startuml
+title 003 重連恢復與活動結果釋出 - 時序圖
+actor "老師" as Teacher
+actor "學生" as Student
+participant "React UI / RealtimeClient" as UI
+participant "RealtimeHub" as Hub
+participant "ActivityState" as Activity
+participant "BuzzerResultsService" as Results
+participant "BuzzerWinningResultsProvider" as Provider
+participant "GuidedNotesService / Google Sheets" as GuidedNotes
+
+opt BUZZING 學生加入或重新連線
+  Student -> UI : 重新連線並恢復已選組別
+  UI -> Hub : student.join(groupId)
+  Hub -> Activity : 讀取目前題號與 BUZZING 階段
+  Hub --> UI : buzzerResults.questionList
+  Hub -> Results : getOwnProgress(groupId)
+  Results --> Hub : 本組逐題提交／鎖定／答案
+  Hub --> UI : buzzerResults.ownProgress
+end
+
+Teacher -> UI : 結束搶答
+UI -> Hub : activity.advance(BUZZING, ENDED)
+Hub -> Hub : 驗證老師權限與階段轉換
+Hub -> Activity : 設定 ENDED
+Hub ->> UI : activity.phaseChanged(ENDED)
+
+Student -> UI : 自動要求結束後結果
+UI -> Hub : buzzerResults.getStudentResults(requestId)
+Hub -> Hub : 驗證學生連線及所屬組別
+Hub -> Activity : 確認目前為 ENDED
+alt 尚未結束或未加入
+  Hub --> UI : STAGE_CONFLICT／AUTH_REQUIRED
+else 已結束且已加入
+  Hub -> Results : getStudentResults(groupId)
+  Results --> Hub : 每題勝出答案及本組答案／狀態
+  Hub --> UI : buzzerResults.studentResults
+  UI --> Student : 顯示勝出結果與本組結果
+end
+
+Teacher -> UI : 查看或重新連線
+UI -> Hub : teacher.authenticate / getTeacherProgress
+Hub -> Results : getTeacherProgress()
+Results --> Hub : 每題所有組別狀態、答案及勝者
+Hub --> UI : teacher-only buzzerResults.teacherProgress
+
+Teacher -> GuidedNotes : ENDED 後要求寫回
+GuidedNotes -> Provider : getSnapshot()
+Provider -> Activity : 檢查有題目且已 ENDED
+Provider -> Results : 取得各題伺服器勝者
+Results --> Provider : 勝出組別與答案（或空清單）
+Provider --> GuidedNotes : READY snapshot（或無題目時 UNAVAILABLE）
+GuidedNotes -> GuidedNotes : 將勝出答案映射至目前工作表題號
+GuidedNotes --> GuidedNotes : 使用 Feature 002 Google Sheets API adapter 寫入
+
+note over Results,Student
+學生封包只包含勝出答案及查詢組別自己的答案；
+其他非勝出組答案不會釋出。答案正確性與計分不屬於本功能。
+end note
+@enduml

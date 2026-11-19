@@ -6,7 +6,7 @@
 
 ## Summary
 
-沿用既有 React/TypeScript/Vite 前端與 Node.js/WebSocket 後端。老師只在既有 WebSocket 連線已驗證為老師時匯入或寫回；後端再檢查伺服器持有的活動階段，並由 `GuidedNotesService` 呼叫 Google Sheets API。既有 `backend/src/server.ts` 作為 composition root，建立 Sheets adapter、Feature 003 結果 provider 與 Guided Notes service，並注入 RealtimeHub；在 Feature 003 provider 實作尚未接入前，正式預設 provider 明確回傳 `UNAVAILABLE`，因此不執行寫回；測試可用 fake adapter/provider 注入同一組服務接線。工作表欄位及題號列每次從所選工作表內容動態辨識。成功匯入後，伺服器以記憶體保存工作表參照和有序題號；寫回時重新讀取工作表、依題號定位目標格，再以單一批次更新寫入答案及清空無人作答格。SQLite 不加入本功能，因 001 已選定單程序記憶體活動且規格沒有重啟復原要求。
+沿用既有 React/TypeScript/Vite 前端與 Node.js/WebSocket 後端。老師只在既有 WebSocket 連線已驗證為老師時匯入或寫回；後端再檢查伺服器持有的活動階段，並由 `GuidedNotesService` 呼叫 Google Sheets API。既有 `backend/src/server.ts` 作為 composition root，建立 Sheets adapter、Feature 003 結果 provider 與 Guided Notes service，並注入 RealtimeHub；正式預設使用 `BuzzerWinningResultsProvider`，`UnavailableWinningResultsProvider` 僅作明確注入的 `UNAVAILABLE` fallback，不取代正式 provider；測試可用 fake adapter/provider 注入同一組服務接線。工作表欄位及題號列每次從所選工作表內容動態辨識。成功匯入後，伺服器以記憶體保存工作表參照和有序題號；寫回時重新讀取工作表、依題號定位目標格，再以單一批次更新寫入答案及清空無人作答格。SQLite 不加入本功能，因 001 已選定單程序記憶體活動且規格沒有重啟復原要求。
 
 ## Technical Context
 
@@ -86,7 +86,7 @@ backend/
 │   ├── guided-notes/
 │   │   ├── service.ts                 # 匯入／寫回流程及活動狀態交換
 │   │   ├── worksheet-parser.ts        # 標題、題號及目標列映射的純邏輯
-│   │   └── unavailable-results.ts     # Feature 003 接入前安全回傳 UNAVAILABLE 的預設 provider
+│   │   └── unavailable-results.ts     # 僅供明確注入的 UNAVAILABLE fallback；正式 composition 預設使用 BuzzerWinningResultsProvider
 │   └── integrations/google-sheets/
 │       ├── types.ts                   # 可注入 Sheets adapter 介面
 │       ├── errors.ts                  # Google API 錯誤正規化
@@ -106,7 +106,7 @@ backend/
 
 | PlantUML 圖表 | 規劃依據 | 對應實作與設計產物 |
 |---|---|---|
-| `diagrams/002-guided-notes-component.puml` | UI 不直接呼叫 Google；後端 SheetFlow 協調匯入／寫回，Questions 由 Activity 保存，Results 由核心搶答活動提供。成功答案覆寫、無人答題清空、錯誤時整批不變。 | `GuidedNotesPanel`、WebSocket handler、`server.ts` composition root、`GuidedNotesService`、typed `WinningResultsProvider`（Feature 003 未接入時以 UNAVAILABLE provider 安全拒絕寫回）、`ActivityState`、Google Sheets adapter；`data-model.md`、兩份 contract。 |
+| `diagrams/002-guided-notes-component.puml` | UI 不直接呼叫 Google；後端 SheetFlow 協調匯入／寫回，Questions 由 Activity 保存，Results 由核心搶答活動提供。成功答案覆寫、無人答題清空、錯誤時整批不變。 | `GuidedNotesPanel`、WebSocket handler、`server.ts` composition root、`GuidedNotesService`、typed `WinningResultsProvider`（正式預設為 `BuzzerWinningResultsProvider`；`UnavailableWinningResultsProvider` 僅作明確注入的 fallback）、`ActivityState`、Google Sheets adapter；`data-model.md`、兩份 contract。 |
 | `diagrams/002-guided-notes-class.puml` | 表達 RealtimeHub 的連線角色授權、GuidedNotesService 的序列化與 deadline、ActivityState、worksheet reference、結果 provider 與 Sheets adapter 的具體責任。 | `ConnectionContext`、`GuidedNotesService`、`ActivityState`、`WorksheetReference`、`Question`、`WinningResultsProvider` 及 `GoogleSheetsAdapter`；座標映射每次讀取時產生，避免以匯入時的舊列號寫回。 |
 | `diagrams/002-guided-notes-sequence-import.puml` | 先驗證老師及 PREPARING，再讀所選工作表、動態找標題列與兩欄，驗證有效題號，最後一次替換活動清單。 | `guidedNotes.import` 契約、純 parser、`GuidedNotesService.importWorksheet`；匯入錯誤時保留舊活動清單。零有效題號依時序圖視為不可匯入。 |
 | `diagrams/002-guided-notes-sequence-export.puml` | 先驗證老師及 ENDED；要求結果 provider 回傳 READY，從伺服器結果取得答案，重讀最新工作表、重定位題號，先完成全部驗證，再一次批次寫入答案或空字串；明確未套用可有限重試；回應不明時讀回且不盲目重送。 | `guidedNotes.export` 契約、伺服器端 `WinningResultsProvider`、`GuidedNotesService.exportAnswers`、單一 `values.batchUpdate`；缺漏或重複的活動題號會在寫入前拒絕。 |

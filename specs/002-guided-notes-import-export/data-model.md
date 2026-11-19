@@ -64,7 +64,7 @@ No winner means no `WinningAnswer` for the question; export still includes that 
 
 An explicit server-side boundary for results produced by Feature 003. An empty answer list is authoritative only when its status is `READY`.
 
-Until the Feature 003 implementation is connected, the production composition root must use a provider that returns `UNAVAILABLE`; it must not substitute an empty `READY` list.
+The production composition root uses `BuzzerWinningResultsProvider` by default. `UnavailableWinningResultsProvider` remains available only as an explicitly injected fallback for tests or an intentionally unavailable result source; it must not replace the production default or an authoritative empty `READY` snapshot.
 
 | Variant | Type | Rule |
 |---|---|---|

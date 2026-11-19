@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import type { ActivityStage } from '../realtime/messages';
 import type { ConnectionRole } from '../state/activity';
+import { TeacherResultsPanel } from './TeacherResultsPanel';
+import type { TeacherProgress } from '../realtime/messages';
 
 export interface TeacherPanelProps {
   readonly role: ConnectionRole;
@@ -9,6 +11,7 @@ export interface TeacherPanelProps {
   readonly error: string | null;
   readonly onLogin: (password: string) => void;
   readonly onAdvance: (from: ActivityStage, to: ActivityStage) => void;
+  readonly resultsProgress?: TeacherProgress | null;
 }
 
 const NEXT_STAGE: Partial<Record<ActivityStage, ActivityStage>> = {
@@ -21,7 +24,7 @@ const NEXT_ACTION: Partial<Record<ActivityStage, string>> = {
   BUZZING: '結束活動',
 };
 
-export function TeacherPanel({ role, stage, connected, error, onLogin, onAdvance }: TeacherPanelProps) {
+export function TeacherPanel({ role, stage, connected, error, onLogin, onAdvance, resultsProgress = null }: TeacherPanelProps) {
   const [password, setPassword] = useState('');
 
   if (role === 'TEACHER') {
@@ -36,6 +39,7 @@ export function TeacherPanel({ role, stage, connected, error, onLogin, onAdvance
           </button>
         )}
         {stage === 'ENDED' && <p>活動已結束。</p>}
+        <TeacherResultsPanel progress={resultsProgress} />
       </section>
     );
   }

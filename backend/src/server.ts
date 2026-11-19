@@ -10,11 +10,12 @@ import {
   type AppConfig,
 } from './config.js';
 import { ActivityState } from './domain/activity-state.js';
+import { BuzzerResultsService } from './domain/buzzer-results.js';
 import { GroupRoster } from './domain/group-roster.js';
 import { createGoogleSheetsAdapter } from './integrations/google-sheets/adapter.js';
 import type { GoogleSheetsAdapter } from './integrations/google-sheets/types.js';
 import { GuidedNotesService, type WinningResultsProvider } from './guided-notes/service.js';
-import { UnavailableWinningResultsProvider } from './guided-notes/unavailable-results.js';
+import { BuzzerWinningResultsProvider } from './guided-notes/winning-results-provider.js';
 import { attachHeartbeat, type HeartbeatOptions } from './realtime/heartbeat.js';
 import { RealtimeHub } from './realtime/handler.js';
 
@@ -38,6 +39,7 @@ export interface RealtimeServer {
   readonly activity: ActivityState;
   readonly roster: GroupRoster;
   readonly guidedNotes: GuidedNotesService;
+  readonly buzzerResults: BuzzerResultsService;
   listen(port?: number): Promise<number>;
   close(): Promise<void>;
 }
@@ -49,6 +51,7 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
   const defaultPort = options.port ?? 3001;
   const activity = new ActivityState();
   const roster = new GroupRoster(config.groups);
+  const buzzerResults = new BuzzerResultsService({ activity, roster });
   let sheetsAdapter = options.guidedNotes?.sheetsAdapter;
   if (!sheetsAdapter) {
     let credentials = null;
@@ -60,13 +63,13 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
     sheetsAdapter = createGoogleSheetsAdapter(credentials);
   }
   const winningResultsProvider = options.guidedNotes?.winningResultsProvider
-    ?? new UnavailableWinningResultsProvider();
+    ?? new BuzzerWinningResultsProvider(activity, buzzerResults);
   const guidedNotes = new GuidedNotesService({
     activity,
     sheets: sheetsAdapter,
     winningResultsProvider,
   });
-  const hub = new RealtimeHub({ config, activity, roster, guidedNotes });
+  const hub = new RealtimeHub({ config, activity, roster, guidedNotes, buzzerResults });
   const httpServer = createServer((_request, response) => {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     response.end('Not found');
@@ -114,6 +117,7 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
     activity,
     roster,
     guidedNotes,
+    buzzerResults,
     listen(port = defaultPort) {
       return new Promise<number>((resolveListen, reject) => {
         const onError = (error: Error) => {
