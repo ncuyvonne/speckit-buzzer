@@ -199,3 +199,17 @@ T004 frontend/tests/e2e/buzzer-results-submit.spec.ts
 - [X] T038 [P] 在 `frontend/tests/unit/realtime-client.test.ts` 加入回歸測試：已加入學生收到組別變更 `GROUP_INVALID` 後，仍保留伺服器綁定的角色、組別及分頁儲存值 per FR-001, FR-016 (review finding)
 - [X] T039 在 `frontend/src/realtime/client.ts` 調整 `GROUP_INVALID` 處理，只在尚未加入有效組別的連線清除組別選擇；已加入學生收到變更組別拒絕時保留目前角色和組別；先通過 T038 per FR-001, FR-016 (review finding)
 - [X] T040 在 `specs/003-buzzer-results/validation-results.md` 記錄 Phase 8 紅綠測試、完整測試結果及審查發現修正 per Constitution III, V (review finding)
+
+## Phase 9: Convergence
+- [X] T041 CRITICAL：更新 `specs/003-buzzer-results/plan.md` 的即時更新決策、`diagrams/003-buzzer-results-component.puml` 與 `diagrams/003-buzzer-results-sequence-submit.puml`，明確呈現成功匯入新題號後向已驗證教師刷新 `teacherProgress`；依計畫所列 PlantUML CLI 重產對應 PNG per Constitution V, VII, FR-012 (partial)
+
+## Phase 10: PR Review Corrections — Student UI
+- [X] T042 在 `BuzzerAnswerPanel` 保持題目選單可切換已鎖定題目，並為 `AUTH_REQUIRED`、`GROUP_INVALID` 顯示學生可採取的繁體中文處置；加入元件單元測試及 Q1 鎖定後切換 Q2 的 Playwright 回歸測試 per FR-005, FR-013 (review finding)
+
+## Phase 11: PR Review Corrections — Live Group Progress and Privacy
+- [X] T043 加入 WebSocket 整合測試並修正成功提交後的進度同步，讓同組其他學生連線立即收到本組 ownProgress 鎖定狀態，不必再次提交 per FR-005, FR-011, FR-016 (review finding)
+- [X] T044 加入不同組別同題並行提交的接收順序勝者整合測試，並檢查 BUZZING 期間學生收到的所有封包不含其他組答案／狀態 per FR-011, SC-002 (review finding)
+
+## Phase 12: PR Review Corrections — Design Artifacts and Evidence
+- [X] T045 對齊 US1 規格、003 計畫與 WebSocket 契約中的同組 ownProgress 即時更新；修正 002 圖表中 provider 的正式注入／測試 fallback 說明，並更新 003 圖表及所有受影響 PNG per Constitution V, VII (review finding)
+- [X] T046 將 Phase 10–12 的紅綠測試、測試命令／退出碼和 PlantUML 結果記錄於 `validation-results.md`；保留 T032 未完成，直到外部審查核准並記錄審查結論 per Constitution III, V (review finding)

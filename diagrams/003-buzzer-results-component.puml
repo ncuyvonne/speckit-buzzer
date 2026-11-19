@@ -31,8 +31,8 @@ Hub --> Results : 提交、查詢及建立角色限定投影
 Results --> Activity : 讀取階段與有序題號
 Results --> Groups : 驗證組別及產生全組教師進度
 Results --> Results : 同步接受、鎖定及配置 receivedOrder
-Hub ..> Client : 題號清單、個人確認、ownProgress、學生結果
-Hub ..> Client : 教師登入快照及每筆有效答案後的 teacherProgress
+Hub ..> Client : 題號清單、個人確認、同組 ownProgress、學生結果
+Hub ..> Client : 教師登入快照、每筆有效答案或成功匯入題號後的 teacherProgress
 Provider --> Results : 讀取每題勝出答案
 Provider --> Activity : 檢查階段及題目是否可用
 GuidedNotes --> Provider : 取得伺服器權威結果
@@ -44,7 +44,8 @@ receivedOrder 決定每題唯一勝者；不判斷正確性或計分。
 end note
 
 note bottom of Hub
-學生加入後只收到題號；BUZZING 重連只收到本組 ownProgress。
+學生加入後只收到題號；BUZZING 重連及同組有效提交後，
+只向本組學生連線傳送 ownProgress。
 ENDED 學生只收到勝出答案與本組作答；老師才收到全組進度。
 end note
 @enduml

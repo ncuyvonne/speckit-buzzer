@@ -19,7 +19,7 @@ async function importQuestions(page: import('@playwright/test').Page) {
   await expect(page.getByText('活動階段：搶答中')).toBeVisible();
 }
 
-test('a student answer is accepted and locked, and a second member of the group gets corrective feedback', async ({ browser }) => {
+test('a student answer immediately locks the same question for every connected group member', async ({ browser }) => {
   const teacher = await browser.newPage();
   await teacher.goto('/');
   await waitForConnected(teacher);
@@ -44,12 +44,38 @@ test('a student answer is accepted and locked, and a second member of the group 
   await firstStudent.getByRole('button', { name: '送出答案' }).click();
   await expect(firstStudent.getByText(/答案已接受並鎖定/)).toBeVisible();
 
-  await secondStudent.getByLabel('答案').fill('第二位同學的答案');
-  await secondStudent.getByRole('button', { name: '送出答案' }).click();
-  await expect(secondStudent.getByRole('alert')).toContainText('鎖定');
+  await expect(secondStudent.getByLabel('答案')).toBeDisabled();
+  await expect(secondStudent.getByLabel('答案')).toHaveValue('第一位同學的答案');
+  await expect(secondStudent.getByRole('button', { name: '送出答案' })).toBeDisabled();
+  await expect(secondStudent.getByText('此題已鎖定。')).toBeVisible();
   await expect(secondStudent.getByText('第二位同學的答案')).toHaveCount(0);
 
   await firstStudent.close();
   await secondStudent.close();
+  await teacher.close();
+});
+
+test('a student can switch to another question after the current question is locked', async ({ browser }) => {
+  const teacher = await browser.newPage();
+  await teacher.goto('/');
+  await waitForConnected(teacher);
+  await importQuestions(teacher);
+
+  const student = await browser.newPage();
+  await student.goto('/');
+  await waitForConnected(student);
+  await student.getByLabel('學生組別').selectOption('1');
+  await student.getByRole('button', { name: '加入組別' }).click();
+  await student.getByLabel('題目').selectOption('1');
+  await student.getByLabel('答案').fill('第一題答案');
+  await student.getByRole('button', { name: '送出答案' }).click();
+  await expect(student.getByText(/答案已接受並鎖定/)).toBeVisible();
+
+  await student.getByLabel('題目').selectOption('2');
+  await student.getByLabel('答案').fill('第二題答案');
+  await student.getByRole('button', { name: '送出答案' }).click();
+  await expect(student.getByText(/答案已接受並鎖定/)).toContainText('第二題答案');
+
+  await student.close();
   await teacher.close();
 });

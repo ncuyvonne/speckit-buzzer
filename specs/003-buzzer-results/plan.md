@@ -101,9 +101,9 @@ diagrams/
 
 | PlantUML 圖表 | 規劃依據 | 對應設計／模組 |
 |---|---|---|
-| diagrams/003-buzzer-results-component.puml | UI 經 RealtimeHub 提交或查詢；服務讀取活動和組別並產生教師進度、學生確認及結果。 | 前端結果面板、backend/src/realtime/handler.ts、backend/src/domain/buzzer-results.ts、ActivityState、GroupRoster。 |
+| diagrams/003-buzzer-results-component.puml | UI 經 RealtimeHub 提交或查詢；服務讀取活動和組別並產生教師進度（登入快照、有效答案及成功匯入題號後刷新）、提交確認、同組學生即時 ownProgress 及結果。 | 前端結果面板、backend/src/realtime/handler.ts、backend/src/domain/buzzer-results.ts、ActivityState、GroupRoster。 |
 | diagrams/003-buzzer-results-class.puml | GroupSubmission 以組別＋題號唯一；教師和學生結果是不同投影；接收順序決定勝者。 | data-model.md、後端領域服務、前端訊息型別、WinningResultsProvider。 |
-| diagrams/003-buzzer-results-sequence-submit.puml | 依序驗證身分、階段、題號與答案；首筆有效答案鎖定；本組收到確認、教師收到即時更新。 | realtime-websocket.md、protocol decoder、handler、領域服務。 |
+| diagrams/003-buzzer-results-sequence-submit.puml | 依序驗證身分、階段、題號與答案；首筆有效答案鎖定；本組在線學生收到即時 ownProgress；每筆有效答案或成功匯入新題號後，教師收到即時更新。 | realtime-websocket.md、protocol decoder、handler、領域服務。 |
 | diagrams/003-buzzer-results-sequence-release.puml | ENDED 後學生查詢勝出答案及本組結果；教師查詢完整資料。 | 契約的結果查詢／回應、服務投影、前端結果檢視。 |
 
 圖表、資料模型及契約須共用相同狀態、欄位與訊息流程。實作若改變流程，須一併更新 PlantUML 來源及相鄰 PNG。
@@ -112,11 +112,11 @@ diagrams/
 
 1. **伺服器端原子接受**：submission service 以不含非同步等待的同步操作檢查階段、題號、答案及「組別＋題號」是否存在，並接受／鎖定首筆答案。此 check-and-set 是線性化點；不可在其中等待外部工作。
 2. **競答排序**：接受的有效提交取得伺服器遞增 receivedOrder；每題序號最小者為唯一勝者。伺服器時間戳可作診斷欄位，但不是 tie-break 權威。無效或重複提交不消耗勝出順位。
-3. **伺服器授權和投影**：組別從已驗證連線取得，不讀取 payload 的組別。教師快照／更新只傳給教師；BUZZING 學生只收本組確認；ENDED 學生只收勝出答案和本組答案／狀態。須在伺服器建立和傳送訊息時執行過濾。
+3. **伺服器授權和投影**：組別從已驗證連線取得，不讀取 payload 的組別。教師快照／更新只傳給教師；BUZZING 學生收到本組確認及僅對同組連線廣播的 ownProgress；ENDED 學生只收勝出答案和本組答案／狀態。須在伺服器建立和傳送訊息時執行過濾。
 4. **活動題目**：沿用 001／002 伺服器持有的單一 Activity 及題號清單。學生加入後只收到排序題號清單，以便選題；不接收題目敘述或正解。只在 BUZZING 接受目前清單中的題號；保留答案原始文字，以 Unicode 空白判斷是否全空白。
 5. **連線恢復與生命週期**：答案按活動內組別和題號保存，不綁定學生 socket；BUZZING 學生重新加入後只收到本組逐題鎖定／答案狀態，ENDED 學生查詢角色限定結果。程序重啟建立新活動，舊答案不復原。
 6. **Feature 002 結果邊界**：實作既有 WinningResultsProvider，以伺服器成功答案建立 WinningResultsSnapshot。有題目但無人作答時回傳 READY 空答案清單；沒有可用題目時回傳不可用狀態，阻止匯出。客戶端不能提供匯出結果。
-7. **即時更新**：有效提交同步更新狀態後，發送最新題目進度給教師連線；老師登入時取得初始進度；學生僅在 ENDED 查詢角色限定結果。沿用 requestId、錯誤 envelope 和 16 KiB 限制。2 秒目標以實際班級人數作本機端對端驗收。
+7. **即時更新**：有效提交同步更新狀態後，向同組所有學生連線發送本組 ownProgress，並發送最新題目進度給教師連線；準備階段成功匯入新題號時，也向已驗證教師連線發送完整 teacherProgress，讓老師在學生提交前看到新增題目及各組未提交狀態；老師登入時取得初始進度；學生僅在 ENDED 查詢角色限定結果。沿用 requestId、錯誤 envelope 和 16 KiB 限制。2 秒目標以實際班級人數作本機端對端驗收。
 
 **Pre-design gate result**: PASS。無憲章例外；權限、共享狀態、資料生命週期及 PlantUML 對應均有明確設計依據。
 

@@ -12,6 +12,8 @@ export interface BuzzerAnswerPanelProps {
 }
 
 const ERROR_GUIDANCE: Partial<Record<ErrorCode, string>> = {
+  AUTH_REQUIRED: '學生連線身分已失效，請重新載入頁面並重新加入組別。',
+  GROUP_INVALID: '目前組別無效，請重新載入頁面並選擇有效組別。',
   ANSWER_EMPTY: '請輸入答案後再送出。',
   ANSWER_LOCKED: '本組此題已鎖定，無法再次作答。',
   QUESTION_INVALID: '找不到這個題目，請重新選擇題號。',
@@ -45,7 +47,7 @@ export function BuzzerAnswerPanel({ groupId, stage, connected, state, onSubmit, 
           <select
             id="buzzer-question"
             value={selectedQuestion}
-            disabled={locked || state.questionIds.length === 0}
+            disabled={state.questionIds.length === 0}
             onChange={(event) => { setQuestionId(event.currentTarget.value); onClearError(); }}
           >
             {state.questionIds.map((id) => <option key={id} value={id}>{id}</option>)}
@@ -70,7 +72,7 @@ export function BuzzerAnswerPanel({ groupId, stage, connected, state, onSubmit, 
         <p role="status">此題已鎖定。</p>
       )}
       {state.error && (
-        <p role="alert">{state.error.message || ERROR_GUIDANCE[state.error.code] || '答案未送出，請修正後重試。'}</p>
+        <p role="alert">{ERROR_GUIDANCE[state.error.code] ?? (state.error.message || '答案未送出，請修正後重試。')}</p>
       )}
     </section>
   );

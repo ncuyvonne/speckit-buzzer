@@ -100,4 +100,54 @@ describe('buzzer results teacher progress WebSocket integration', () => {
     expect(studentB.messages.all.some((message) => message.type === 'buzzerResults.teacherProgress')).toBe(false);
     expect(studentA.messages.all.some((message) => JSON.stringify(message).includes('B answer'))).toBe(false);
   });
+
+  it('keeps every BUZZING student packet free of other groups answers and submission status', async () => {
+    const app = createRealtimeServer({
+      config: { groups: ['A', 'B'], teacherPassword: 'test-password', teacherLoginEnabled: true },
+      port: 0,
+    });
+    apps.push(app);
+    app.activity.replaceGuidedNotesImport(
+      { spreadsheetId: 'privacy', sheetId: 1, worksheetTitle: 'Sheet' },
+      [{ questionId: '1', displayOrder: 1, sourceRowAtImport: 2 }],
+    );
+    const port = await app.listen(0);
+    const teacher = await connect(port);
+    const studentA = await connect(port);
+    const studentB = await connect(port);
+    for (const [student, groupId] of [[studentA, 'A'], [studentB, 'B']] as const) {
+      student.socket.send(JSON.stringify({ type: 'student.join', requestId: `join-${groupId}`, payload: { groupId } }));
+      await student.messages.waitFor((message) => message.type === 'student.joined');
+    }
+
+    teacher.socket.send(JSON.stringify({
+      type: 'teacher.authenticate', requestId: 'teacher-auth', payload: { password: 'test-password' },
+    }));
+    await teacher.messages.waitFor((message) => message.type === 'teacher.authenticated');
+    await teacher.messages.waitFor((message) => message.type === 'buzzerResults.teacherProgress');
+    const stageChanged = teacher.messages.waitFor((message) => message.type === 'activity.phaseChanged');
+    teacher.socket.send(JSON.stringify({
+      type: 'activity.advance', requestId: 'start', payload: { from: 'PREPARING', to: 'BUZZING' },
+    }));
+    await stageChanged;
+
+    const accepted = studentB.messages.waitFor((message) => message.type === 'buzzerResults.submitted');
+    const teacherUpdate = teacher.messages.waitFor((message) => message.type === 'buzzerResults.teacherProgress'
+      && message.payload.questions?.[0]?.groups?.some((group: { groupId: string; submitted: boolean }) =>
+        group.groupId === 'B' && group.submitted));
+    studentB.socket.send(JSON.stringify({
+      type: 'buzzerResults.submitAnswer', requestId: 'private-answer',
+      payload: { questionId: '1', answerText: '只屬於 B 組的秘密答案' },
+    }));
+    await expect(accepted).resolves.toMatchObject({
+      requestId: 'private-answer', payload: { questionId: '1', accepted: true, locked: true },
+    });
+    await teacherUpdate;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    expect(studentA.messages.all.some((message) => message.type === 'buzzerResults.teacherProgress')).toBe(false);
+    expect(studentA.messages.all.some((message) => message.type === 'buzzerResults.ownProgress')).toBe(false);
+    expect(studentA.messages.all.some((message) => JSON.stringify(message).includes('只屬於 B 組的秘密答案'))).toBe(false);
+    expect(studentA.messages.all.some((message) => JSON.stringify(message).includes('"submitted":true'))).toBe(false);
+  });
 });

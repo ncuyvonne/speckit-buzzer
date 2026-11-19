@@ -3,6 +3,7 @@ title 003 學生提交答案 - 時序圖
 actor "學生" as Student
 actor "老師介面" as TeacherUI
 participant "React UI / RealtimeClient" as UI
+participant "同組其他學生 UI" as GroupUI
 participant "RealtimeHub" as Hub
 participant "BuzzerResultsService" as Results
 participant "ActivityState" as Activity
@@ -18,6 +19,7 @@ opt 準備階段有新題號匯入
   TeacherUI -> Hub : guidedNotes.import(...)
   Hub -> Activity : 更新活動題號
   Hub ->> UI : 只向已加入學生更新 questionList
+  Hub ->> TeacherUI : 向已驗證教師廣播完整 teacherProgress（新題目各組未提交）
 end
 
 Student -> UI : 選題並送出原始答案
@@ -35,11 +37,14 @@ else 首筆有效答案
   Results -> Results : 以最小 receivedOrder 推導勝者
   Results --> Hub : accepted submission
   Hub --> UI : buzzerResults.submitted(accepted, locked)
+  Hub ->> UI : buzzerResults.ownProgress(本組逐題鎖定狀態)
+  Hub ->> GroupUI : buzzerResults.ownProgress(本組逐題鎖定狀態)
   Hub ->> TeacherUI : teacher-only 完整 teacherProgress
 end
 
 note over Student,TeacherUI
-BUZZING 中學生只收到本組接受確認或錯誤；
+BUZZING 中學生只收到本組接受確認、錯誤及本組 ownProgress；
+同組其他在線學生在答案接受後立即收到鎖定狀態；
 教師登入時先收到全量快照，每筆有效答案後收到更新。
 end note
 @enduml

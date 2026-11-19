@@ -7,6 +7,20 @@ import { FakeGoogleSheetsAdapter } from '../support/fake-google-sheets.js';
 const ORIGIN = 'http://127.0.0.1:5173';
 type JsonMessage = { type: string; requestId?: string; payload: Record<string, unknown> };
 
+function questionProgress(message: JsonMessage) {
+  return (message.payload as {
+    questions: Array<{
+      questionId: string;
+      groups: Array<{ groupId: string; submitted: boolean }>;
+      winningGroupId: string | null;
+    }>;
+  }).questions?.[0];
+}
+
+function submittedGroupIds(message: JsonMessage): string[] {
+  return questionProgress(message)?.groups.filter((group) => group.submitted).map((group) => group.groupId) ?? [];
+}
+
 function createInbox(socket: WebSocket) {
   const messages: JsonMessage[] = [];
   const waiters: Array<{ predicate: (message: JsonMessage) => boolean; resolve: (message: JsonMessage) => void; reject: (error: Error) => void }> = [];
@@ -123,6 +137,7 @@ describe('buzzer results submit WebSocket integration', () => {
     await expect(lateStudent.inbox.waitFor((message) => message.type === 'buzzerResults.questionList'))
       .resolves.toMatchObject({ payload: { questionIds: ['1'] } });
 
+    const siblingProgress = secondStudent.inbox.waitFor((message) => message.type === 'buzzerResults.ownProgress');
     const firstAck = firstStudent.inbox.waitFor((message) => message.type === 'buzzerResults.submitted');
     firstStudent.socket.send(JSON.stringify({
       type: 'buzzerResults.submitAnswer', requestId: 'answer-1', payload: { questionId: '1', answerText: '  first  ' },
@@ -130,6 +145,10 @@ describe('buzzer results submit WebSocket integration', () => {
     expect(await firstAck).toMatchObject({
       requestId: 'answer-1',
       payload: { questionId: '1', accepted: true, locked: true },
+    });
+    await expect(siblingProgress).resolves.toMatchObject({
+      type: 'buzzerResults.ownProgress',
+      payload: { questions: [{ questionId: '1', submitted: true, answerText: '  first  ', locked: true }] },
     });
     expect(app.buzzerResults.getSubmission('A', '1')?.answerText).toBe('  first  ');
 
@@ -213,5 +232,48 @@ describe('buzzer results submit WebSocket integration', () => {
       submitted: false,
       answerText: null,
     });
+  });
+
+  it('uses server receive order to select the winner when different groups submit in parallel', async () => {
+    const { app, port } = await startServer();
+    const teacher = await connect(port);
+    const studentA = await connect(port);
+    const studentB = await connect(port);
+
+    for (const [student, groupId] of [[studentA, 'A'], [studentB, 'B']] as const) {
+      student.socket.send(JSON.stringify({ type: 'student.join', requestId: `join-${groupId}`, payload: { groupId } }));
+      await student.inbox.waitFor((message) => message.type === 'student.joined');
+    }
+    await prepareTeacher(app, teacher.inbox, teacher.socket, true);
+
+    const firstUpdate = teacher.inbox.waitFor((message) => message.type === 'buzzerResults.teacherProgress'
+      && submittedGroupIds(message).length === 1);
+    const finalUpdate = teacher.inbox.waitFor((message) => message.type === 'buzzerResults.teacherProgress'
+      && submittedGroupIds(message).length === 2);
+    const ackA = studentA.inbox.waitFor((message) => message.type === 'buzzerResults.submitted');
+    const ackB = studentB.inbox.waitFor((message) => message.type === 'buzzerResults.submitted');
+
+    // Send both socket frames before awaiting either acknowledgment.
+    studentA.socket.send(JSON.stringify({
+      type: 'buzzerResults.submitAnswer', requestId: 'parallel-A', payload: { questionId: '1', answerText: '答案 A' },
+    }));
+    studentB.socket.send(JSON.stringify({
+      type: 'buzzerResults.submitAnswer', requestId: 'parallel-B', payload: { questionId: '1', answerText: '答案 B' },
+    }));
+
+    await expect(Promise.all([ackA, ackB])).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ requestId: 'parallel-A', payload: { questionId: '1', accepted: true, locked: true } }),
+      expect.objectContaining({ requestId: 'parallel-B', payload: { questionId: '1', accepted: true, locked: true } }),
+    ]));
+    const firstProgress = await firstUpdate;
+    const completedProgress = await finalUpdate;
+    const submissionA = app.buzzerResults.getSubmission('A', '1')!;
+    const submissionB = app.buzzerResults.getSubmission('B', '1')!;
+    const winner = submissionA.receivedOrder < submissionB.receivedOrder ? 'A' : 'B';
+
+    expect(submissionA.receivedOrder).not.toBe(submissionB.receivedOrder);
+    expect(submittedGroupIds(firstProgress)).toHaveLength(1);
+    expect(submittedGroupIds(firstProgress)[0]).toBe(winner);
+    expect(questionProgress(completedProgress).winningGroupId).toBe(winner);
   });
 });

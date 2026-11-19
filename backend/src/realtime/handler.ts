@@ -161,6 +161,7 @@ export class RealtimeHub {
           requestId: message.requestId,
           payload: { questionId: message.payload.questionId, accepted: true, locked: true },
         });
+        this.#broadcastOwnProgress(context.groupId);
         this.#broadcastTeacherProgress();
         return;
       }
@@ -299,6 +300,12 @@ export class RealtimeHub {
   #broadcastTeacherProgress(): void {
     for (const connection of this.#connections) {
       if (connection.role === 'TEACHER') this.#sendTeacherProgress(connection);
+    }
+  }
+
+  #broadcastOwnProgress(groupId: string): void {
+    for (const connection of this.#connections) {
+      if (connection.role === 'STUDENT' && connection.groupId === groupId) this.#sendOwnProgress(connection);
     }
   }
 

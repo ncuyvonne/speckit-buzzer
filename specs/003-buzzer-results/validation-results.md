@@ -53,7 +53,56 @@ Each Playwright phase used port 5179 with `PLAYWRIGHT_EXTERNAL_SERVER=1`. The fu
 ## Merge review handoff
 
 - Working branch is `codex-003-buzzer-results`.
-- PR [#3](https://github.com/ncuyvonne/speckit-buzzer/pull/3) is open against `main` from `codex-003-buzzer-results` and contains 42 changed files. Review approval is pending; no merge has been performed.
+- At the time this handoff was written, PR [#3](https://github.com/ncuyvonne/speckit-buzzer/pull/3) was open against `main` from `codex-003-buzzer-results` and contained 42 changed files; no merge had been performed. The PR state was not refreshed during the local correction run below.
 - Pre-PR specification/constitution review: submission authorization, BUZZING-only acceptance, first-valid lock, server `receivedOrder`, Unicode-whitespace rejection, teacher-only full progress, student own-progress recovery, ENDED role-filtered results, and the Feature 002 provider boundary match the implemented code and automated coverage. Credentials remain server-side through the existing Feature 002 environment configuration.
 - Constitution quality gates: I–V and VII were checked against the implementation, validation, spec, protocol, provider, and regenerated diagrams. Principle VI awaits PR review.
 - T030 is complete. T032 remains incomplete until review approval and its conclusion are recorded; merging remains a separate follow-up requiring approval.
+
+## Phase 9 — Convergence
+
+| Scope | Command / Evidence | Result |
+|---|---|---|
+| T041 diagrams | `java -jar plantuml.jar "./diagrams/*.puml"` | Exit 0; regenerated the PlantUML outputs. The updated component and submit sequence PNGs were visually checked against their sources. |
+| Unit tests | `npm run test` | Exit 0; frontend 1/1 and backend 117/117 passed. |
+| Typecheck and build | `npm run typecheck`; `npm run build` | Both exited 0. |
+| Teacher progress E2E | Targeted Playwright run with `PLAYWRIGHT_PORT=5191`, `PLAYWRIGHT_CLASS_SIZE=3` | Playwright output reported 1/1 passed and 42 ms submit-to-teacher latency. The runner did not return a final shell exit code during the wait, so the command exit is unverified. The first attempt on port 5179 could not start because that port was already in use. |
+
+The E2E output is recorded as observed; its shell completion status is not claimed as successful.
+
+## Phase 10 — PR review corrections: student UI
+
+| Scope | Command / Evidence | Result |
+|---|---|---|
+| Component unit tests, before the UI fix | `npm test --workspace @speckit-buzzer/frontend -- tests/unit/buzzer-answer-panel.test.ts` | Red: all 3 new checks failed, reproducing the disabled question selector and missing `AUTH_REQUIRED` / `GROUP_INVALID` guidance. |
+| Component unit tests, after the UI fix | Same command | Green: 1 file, 3/3 tests passed. Frontend typecheck passed. |
+| Question switching E2E | `npm run test:e2e --workspace @speckit-buzzer/frontend -- --config=playwright.local.config.ts tests/e2e/buzzer-results-submit.spec.ts -g "can switch to another question" --reporter=line` | 1/1 passed. Uses installed system Chrome via a temporary Playwright config because the Playwright-managed Chromium binary was unavailable in this environment. The temporary config was removed after validation. |
+
+## Phase 11 — PR review corrections: live group progress and privacy
+
+| Scope | Command / Evidence | Result |
+|---|---|---|
+| WebSocket regressions before implementation | `npm test --workspace @speckit-buzzer/backend -- tests/integration/buzzer-results-submit.test.ts tests/integration/buzzer-results-teacher-progress.test.ts` | Red: the new same-group client update timed out as expected; cross-group arrival-order and privacy checks passed. |
+| WebSocket regressions after implementation | Same command | Green: 2 files, 6/6 tests passed. Covers immediate ownProgress delivery to same-group connections, two submitted groups with winner matching server `receivedOrder`, and student packet privacy during BUZZING. Backend typecheck passed. |
+
+## Phase 12 — PR review corrections: design artifacts
+
+| Scope | Command / Evidence | Result |
+|---|---|---|
+| Spec/plan/contract and diagram updates | US1/FR-011, plan decisions 3 and 7, WebSocket contract, two Feature 002 diagrams and two Feature 003 diagrams | Source artifacts now describe same-group ownProgress broadcast and the server's default `BuzzerWinningResultsProvider`; `UnavailableWinningResultsProvider` is labeled as an explicitly injected fallback. |
+| PlantUML render | `java -jar plantuml.jar diagrams/002-guided-notes-class.puml diagrams/002-guided-notes-component.puml diagrams/003-buzzer-results-component.puml diagrams/003-buzzer-results-sequence-submit.puml` | Exit 0. All four generated PNGs were visually checked against their sources. |
+
+## Final regression after review corrections
+
+| Command | Exit | Observed result |
+|---|---:|---|
+| `npm test` | 0 | Frontend: 2 files / 4 tests passed. Backend: 23 files / 119 tests passed. |
+| `npm run test:e2e --workspace @speckit-buzzer/frontend -- --config=playwright.local.config.ts --reporter=dot` with `PLAYWRIGHT_TEST_ORIGIN=http://127.0.0.1:5201` | 0 | 31 Playwright tests passed in 36.9 seconds using installed system Chrome. The temporary config was removed after the run. |
+| `npm run typecheck` | 0 | Frontend and backend typechecks passed. |
+| `npm run build` | 0 | Frontend production build and backend TypeScript build passed. |
+| `git diff --check` | 0 | No whitespace errors. Git emitted only LF-to-CRLF notices for the edited PlantUML / validation files. |
+
+The first complete Playwright pass after enabling the same-group broadcast exposed one outdated assertion that expected a second student to submit after the first student had locked the question. That E2E was updated to assert the immediate disabled state, shared answer and lock message; the affected 2-test run then passed, followed by the full 31-test pass above.
+
+## PR review handoff
+
+The corrections and evidence in this section are pushed to the existing PR #3 branch after local validation. This run did not request another review or merge the PR. T032 remains unchecked until external approval is recorded and the review conclusion is added here.

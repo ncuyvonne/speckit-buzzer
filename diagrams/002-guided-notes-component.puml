@@ -10,14 +10,16 @@ component "ActivityState" as Activity
 interface "WinningResultsProvider" as Results
 component "GoogleSheetsAdapter" as Adapter
 cloud "Google Sheets API" as Sheet
-component "Feature 003 結果來源" as Feature003
+component "BuzzerWinningResultsProvider\n(Feature 003 正式結果來源)" as Feature003
+component "UnavailableWinningResultsProvider\n(明確注入的備援)" as Fallback
 
 Teacher --> UI : 選擇學習單／確認寫回
 UI --> Hub : guidedNotes.import／export
 Hub --> Flow : 驗證老師角色與 PREPARING／ENDED
 Flow --> Activity : 匯入時替換題號／寫回時讀取目前活動
 Flow --> Results : 取得伺服器端成功答案
-Feature003 ..> Results : 正式結果 provider
+Feature003 ..> Results : server.ts 預設注入
+Fallback ..> Results : 僅測試／備援注入
 Results ..> Flow : READY／UNAVAILABLE
 Flow --> Adapter : 解析、重讀、定位及批次寫回
 Adapter --> Sheet : metadata／grid values／values.batchUpdate
@@ -26,8 +28,9 @@ Flow ..> Hub : 題號、結果或穩定錯誤
 Hub ..> UI : WebSocket response
 
 note bottom of Results
-Feature 003 尚未接入時使用
-UnavailableWinningResultsProvider；
+主伺服器預設使用 BuzzerWinningResultsProvider；
+UnavailableWinningResultsProvider 只保留給明確的
+測試或備援注入，不是目前正式伺服器預設；
 UNAVAILABLE 必須在寫入前拒絕。
 READY 的空答案清單才表示無人成功。
 end note
