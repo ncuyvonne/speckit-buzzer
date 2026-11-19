@@ -18,7 +18,7 @@
 
 **Primary Dependencies**: React、Vite、Node.js `ws`；測試使用 Vitest 與 Playwright
 
-**Storage**: Node.js 單一程序的記憶體狀態；學生目前組別存於該分頁的 `sessionStorage`；不使用 SQLite
+**Storage**: Node.js 單一程序的記憶體狀態；學生目前組別存於該分頁的 `sessionStorage`，並鏡像至目前 History API 歷史項目，供瀏覽器儲存不可用時同分頁還原；不使用 SQLite
 
 **Testing**: Vitest 單元及真實 WebSocket 整合測試、Playwright 端對端測試、`tsc --noEmit` 型別檢查
 

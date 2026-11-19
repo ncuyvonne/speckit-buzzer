@@ -86,19 +86,22 @@
  「準備中」; process restart recovery is outside this feature's current scope.
 - **Sources**: [SQLite In-Memory Databases](https://www.sqlite.org/inmemorydb.html)
 
-### 6. Student group restoration: tab-scoped browser storage
+### 6. Student group restoration: tab-scoped browser state
 
-- **Decision**: Store only the selected student `groupId` in `sessionStorage`. On each new WebSocket
-  connection, the server immediately pushes an `activity.snapshot`. The student client then sends
-  the saved group to the server, which validates it against the current roster and returns the join
-  result with a fresh snapshot. Restore the selection in the same tab and running activity
-  without a timer, in all three stages. Clear a rejected saved group before showing the picker.
-- **Rationale**: `sessionStorage` survives reloads in the same tab and is isolated per tab, fitting
-  the requirement that each student browser retains its group while allowing several students in
-  the same group.
+- **Decision**: Store only the selected student `groupId` in `sessionStorage` and mirror it into
+  the current History API entry. Use the history entry if `sessionStorage` is unavailable or throws.
+  On each new WebSocket connection, the server immediately pushes an `activity.snapshot`. The
+  student client then sends the saved group to the server, which validates it against the current
+  roster and returns the join result with a fresh snapshot. Restore the selection in the same tab
+  and running activity without a timer, in all three stages. Clear a rejected saved group before
+  showing the picker.
+- **Rationale**: `sessionStorage` is the primary tab-isolated store. The current history entry
+  provides a same-tab fallback that survives reloading that entry without putting the group in the
+  URL; the server still revalidates it on every connection.
 - **Alternatives considered**: `localStorage` would retain the group after the tab/browser is
   closed, which is not required. No student account system is needed for per-tab group identity.
-- **Source**: [MDN: `sessionStorage`](https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage)
+- **Sources**: [MDN: `sessionStorage`](https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage),
+  [MDN: `History.replaceState()`](https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState)
 
 ### 7. Testing: Vitest for logic, Playwright for end-to-end flows
 

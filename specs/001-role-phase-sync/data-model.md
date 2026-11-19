@@ -55,7 +55,7 @@ Represents the selected group for the current browser tab.
 
 | Field | Type | Validation / Rule |
 |---|---|---|
-| `groupId` | `string` | Saved in `sessionStorage`; revalidated by the server after each connection |
+| `groupId` | `string` | Saved in `sessionStorage` and mirrored to the current tab history entry as a same-tab fallback; revalidated by the server after each connection |
 
 Reloading or reconnecting the same tab preserves the selection without an elapsed-time limit
 within the running activity, including `ENDED`. A missing or invalid selection returns the student

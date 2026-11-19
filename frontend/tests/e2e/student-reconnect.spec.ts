@@ -74,6 +74,26 @@ test('same tab restores its group after reload and reconnect in all stages witho
   await teacher.close();
 });
 
+test('same tab restores its group after reload when sessionStorage access is blocked', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'sessionStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Storage access is blocked', 'SecurityError');
+      },
+    });
+  });
+
+  await page.goto('/');
+  await waitForConnected(page);
+  await joinGroup(page, '1');
+  await expect(page.getByText('已加入組別：1')).toBeVisible();
+
+  await page.reload();
+  await waitForConnected(page);
+  await expect(page.getByText('已加入組別：1')).toBeVisible();
+});
+
 test('selection is tab-scoped and a reconnecting same-group student does not displace its peer', async ({ page, backend }) => {
   await page.goto('/');
   await waitForConnected(page);
