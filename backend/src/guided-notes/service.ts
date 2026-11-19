@@ -311,13 +311,12 @@ export class GuidedNotesService {
     return createExportManifest(worksheet, mapping, randomUUID(), metadataIds);
   }
 
-  #exportWrites(manifest: ExportManifest): readonly AnswerCellWrite[] {
-    const targetCounts = new Map<string, number>();
-    for (const target of manifest.targets) {
-      targetCounts.set(target.questionId, (targetCounts.get(target.questionId) ?? 0) + 1);
-    }
+  #exportWrites(manifest: ExportManifest, questions: readonly Question[]): readonly AnswerCellWrite[] {
+    const groupQuestionIds = new Set(questions
+      .filter((question) => question.kind === 'GROUP')
+      .map((question) => question.questionId));
     return manifest.targets.flatMap((target) => {
-      if ((targetCounts.get(target.questionId) ?? 0) > 1 && target.intendedValue === null) return [];
+      if (groupQuestionIds.has(target.questionId) && target.intendedValue === null) return [];
       return [{
         questionId: target.questionId,
         rowNumber: target.rowNumber,
@@ -327,8 +326,8 @@ export class GuidedNotesService {
     });
   }
 
-  #resultForManifest(manifest: ExportManifest): ExportAnswersResult {
-    const writes = this.#exportWrites(manifest);
+  #resultForManifest(manifest: ExportManifest, questions: readonly Question[]): ExportAnswersResult {
+    const writes = this.#exportWrites(manifest, questions);
     const winnerIds = new Set(manifest.targets
       .filter((target) => target.intendedValue !== null)
       .map((target) => target.questionId));
@@ -344,12 +343,12 @@ export class GuidedNotesService {
     const state = activity.exportAnchorState;
     if (state.status !== 'PREPARED') throw new TypeError('Export reconciliation requires PREPARED state.');
     const { manifest } = state;
-    const result = this.#resultForManifest(manifest);
+    const result = this.#resultForManifest(manifest, activity.questions);
 
     const sheetAnchors = sheetScopedExportAnchors(metadata, worksheet);
     if (sheetAnchors.length === manifest.anchors.length) {
       validateConfirmedExportManifest(grid.values, activity.questions, worksheet, manifest, metadata);
-      if (manifestTargetsMatch(grid, manifest, 'intendedValue')) {
+      if (manifestTargetsMatch(grid, manifest, 'intendedValue', activity.questions)) {
         activity.setExportAnchorState({ status: 'CONFIRMED', manifest });
         return result;
       }
@@ -471,12 +470,12 @@ export class GuidedNotesService {
           }
           const pending = this.#pendingRepeat;
           validateConfirmedExportManifest(evidence.grid.values, activity.questions, worksheet, state.manifest, evidence.metadata);
-          if (manifestTargetsMatch(evidence.grid, pending, 'intendedValue')) {
+          if (manifestTargetsMatch(evidence.grid, pending, 'intendedValue', activity.questions)) {
             activity.setExportAnchorState({ status: 'CONFIRMED', manifest: pending });
             this.#pendingRepeat = null;
-            return this.#resultForManifest(pending);
+            return this.#resultForManifest(pending, activity.questions);
           }
-          if (manifestTargetsMatch(evidence.grid, pending, 'prewriteValue')) {
+          if (manifestTargetsMatch(evidence.grid, pending, 'prewriteValue', activity.questions)) {
             this.#pendingRepeat = null;
             throw new GuidedNotesServiceError('SHEET_WRITE_FAILED', '再次寫回未套用，學習單資料未變更；請檢查連線後再試。');
           }
@@ -504,7 +503,7 @@ export class GuidedNotesService {
               })(),
             })),
           };
-          const successResult = this.#resultForManifest(pendingManifest);
+          const successResult = this.#resultForManifest(pendingManifest, activity.questions);
           if (writes.every((write) => worksheetCellValue(evidence.grid, write) === write.value)) {
             activity.setExportAnchorState({ status: 'CONFIRMED', manifest: pendingManifest });
             return successResult;
@@ -524,13 +523,13 @@ export class GuidedNotesService {
             try {
               const readBack = await this.#readExportEvidence(context, sheets, worksheet, resolved);
               validateConfirmedExportManifest(readBack.grid.values, activity.questions, worksheet, pendingManifest, readBack.metadata);
-              if (manifestTargetsMatch(readBack.grid, pendingManifest, 'intendedValue')) {
+              if (manifestTargetsMatch(readBack.grid, pendingManifest, 'intendedValue', activity.questions)) {
                 activity.setExportAnchorState({ status: 'CONFIRMED', manifest: pendingManifest });
                 this.#pendingRepeat = null;
                 context.writeMayHaveApplied = false;
                 return successResult;
               }
-              if (manifestTargetsMatch(readBack.grid, pendingManifest, 'prewriteValue')) {
+              if (manifestTargetsMatch(readBack.grid, pendingManifest, 'prewriteValue', activity.questions)) {
                 this.#pendingRepeat = null;
                 context.writeMayHaveApplied = false;
                 throw new GuidedNotesServiceError('SHEET_WRITE_FAILED', '再次寫回未套用，學習單資料未變更；請檢查連線後再試。');
@@ -558,8 +557,8 @@ export class GuidedNotesService {
           evidence.grid.rawValues,
         );
         const manifest = this.#newExportManifest(worksheet, mapping);
-        const writes = this.#exportWrites(manifest);
-        const successResult = this.#resultForManifest(manifest);
+        const writes = this.#exportWrites(manifest, activity.questions);
+        const successResult = this.#resultForManifest(manifest, activity.questions);
         activity.setExportAnchorState({ status: 'PREPARED', manifest });
         try {
           await this.#writeWithRetry(context, () => sheets.batchExport(resolved, writes, manifest.anchors));
@@ -626,16 +625,16 @@ function manifestTargetsMatch(
   grid: WorksheetGrid,
   manifest: ExportManifest,
   expectedField: 'prewriteValue' | 'intendedValue',
+  questions: readonly Question[],
 ): boolean {
-  const targetCounts = new Map<string, number>();
-  for (const target of manifest.targets) {
-    targetCounts.set(target.questionId, (targetCounts.get(target.questionId) ?? 0) + 1);
-  }
+  const groupQuestionIds = new Set(questions
+    .filter((question) => question.kind === 'GROUP')
+    .map((question) => question.questionId));
   return manifest.targets.every((target) => {
     if (expectedField === 'prewriteValue') {
       return worksheetCellRawValue(grid, target.rowNumber, target.answerColumnNumber) === target.prewriteValue;
     }
-    if (target.intendedValue === null && (targetCounts.get(target.questionId) ?? 0) > 1) {
+    if (target.intendedValue === null && groupQuestionIds.has(target.questionId)) {
       return worksheetCellRawValue(grid, target.rowNumber, target.answerColumnNumber) === target.prewriteValue;
     }
     return worksheetCellValue(grid, {
@@ -685,7 +684,7 @@ function firstExportCommitted(
   } catch {
     return false;
   }
-  return manifestTargetsMatch(grid, manifest, 'intendedValue');
+  return manifestTargetsMatch(grid, manifest, 'intendedValue', questions);
 }
 
 function createExportResult(writes: readonly AnswerCellWrite[], winnerIds: ReadonlySet<string>): ExportAnswersResult {

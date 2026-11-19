@@ -108,7 +108,7 @@ description: "Dependency-ordered implementation tasks for Feature 004 question g
 - [X] T029 Run repository regression gates from `package.json`: `npm run typecheck`, backend and frontend workspace Vitest, `npm run test:e2e --workspace @speckit-buzzer/frontend`, and `npm run build`; record exact commands and actual results in `specs/004-question-groups/quickstart.md`, marking unrun checks as unrun.
 - [X] T030 Benchmark import and export separately with a disposable Google worksheet and backend environment credentials using the Feature 002 reference size (up to 100 top-level questions, 1,000 rows × 26 columns); verify each completes within 10 seconds and record test conditions/results in `specs/004-question-groups/quickstart.md`.
 - [X] T031 Run the constitution-required `$speckit-converge` check against `specs/004-question-groups/spec.md`, `plan.md`, `tasks.md`, the implementation, and `diagrams/004-question-groups-*.puml` after implementation; add any remaining unbuilt work to `specs/004-question-groups/tasks.md` and resolve it before PR review.
-- [ ] T032 Prepare the Feature 004 PR from `codex/004-question-groups` with only the implementation, `diagrams/004-*`, and `specs/004-question-groups/`; include evidence from `specs/004-question-groups/quickstart.md` and obtain the constitution-required review before merge.
+- [X] T032 Prepare the Feature 004 PR from `codex/004-question-groups` with the implementation, `README.md`, `diagrams/004-*`, and `specs/004-question-groups/`; include evidence from `specs/004-question-groups/quickstart.md` and obtain the constitution-required review before merge.
 
 ---
 
@@ -202,3 +202,8 @@ Task: "T022 export browser tests in frontend/tests/e2e/guided-notes-export.spec.
 - [X] T035 Accept full-width, half-width, and mixed-style group markers; reject mismatched delimiters; cover all forms in parser tests and align the worksheet contract wording with the mixed-style rule.
 - [X] T036 Preserve no-winner group placeholders with no answer-cell writes while still clearing no-winner single cells; cover initial and repeated exports in mapping, service integration, Playwright, and live Sheets tests.
 - [X] T037 Update PR evidence with exact 16,384/16,385-byte boundary coverage, explain the `sb004` metadata and reimport guard/reset tradeoff, check whether the actual teacher worksheet fixture is available, and request a new review. Do not substitute a synthetic fixture for an unavailable source template.
+
+## Phase 10: Approved Review Follow-ups
+
+- [X] T038 Use question `kind` to identify groups in export selection and read-back reconciliation; clarify no-winner group omission in the export sequence diagram, regenerate its PNG, and document exported-sheet reuse in README.
+- [ ] T039 Add cell-by-cell fixture tests for both reviewer-provided teacher CSV templates once those files are received.

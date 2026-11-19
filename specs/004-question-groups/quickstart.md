@@ -154,7 +154,8 @@ The script must print `GUIDED_NOTES_SERVICE_BENCHMARK=PASS` and `scratch_targets
 - `npm run test --workspace @speckit-buzzer/frontend`: 2 files / 10 tests passed, including exact 16,384/16,385-byte browser transport cases.
 - `npm run test:e2e --workspace @speckit-buzzer/frontend`: 37 Playwright tests passed. Export E2E asserts the no-winner group markers remain unchanged on first and repeated export.
 - `npm run typecheck` and `npm run build`: both passed for frontend and backend.
-- The optional cell-by-cell teacher-template fixture was not added because no teacher spreadsheet file exists in either the repository worktree or the original Desktop checkout; no synthetic file was represented as the teacher's template.
+- The export service selects no-winner handling from `Question.kind`; the export sequence PlantUML source and PNG now state that no-winner group cells have no write request, and `README.md` explains how to reuse an original worksheet template for repeat tests.
+- The cell-by-cell teacher-template fixture remains pending: the two CSVs mentioned in the review are not in the worktree or original Desktop checkout yet. No synthetic file was represented as the teacher's template; see pending task T039.
 
 Under the Feature 002 reference conditions—at most 100 top-level question IDs, grid no larger than 1,000 rows × 26 columns, no injected network delay or quota/transient API error—each operation must complete in 10 seconds or less. After export, also verify:
 

@@ -58,11 +58,15 @@ else 結果已就緒
       Notes --> Hub : 寫入前拒絕並提示檢查
     else 目標均已確認
       Parser --> Notes : 完整目標格及答案對應
+      note over Notes,Sheets
+      得勝答案格寫入子答案；無人作答的單題格清空。
+      無人作答的題組保留原佔位符，且不送出儲存格寫入請求。
+      end note
       opt 首次匯出
         Notes -> Activity : 送出前保留原坐標、標記 ID 與預期格值
       end
-      Notes -> Sheets : 提交單一原子批次
-      Sheets -> Sheet : 僅寫目標值，首次同批建立 PROJECT key=sb004 列欄標記
+      Notes -> Sheets : 提交適用答案格與錨點的單一原子批次
+      Sheets -> Sheet : 寫適用答案格，首次同批建立 PROJECT key=sb004 列欄標記
       alt 批次確認成功
         Sheets --> Notes : 已確認套用
         Notes -> Activity : 將首次 manifest 標記為 CONFIRMED
@@ -87,9 +91,9 @@ else 結果已就緒
 end
 
 note over Notes,Parser
-匯出以答案或空值取代佔位符。
+得勝答案取代佔位符；無人作答單題清空；無人作答題組略過寫入並保留原佔位符。
 已匯出工作表供查看結果；其 key=sb004 錨點會阻止新活動匯入該表。
-建立新活動須用原始或未匯出的學習單。
+建立新活動須用原始學習單範本或從該範本建立的副本。
 確認後重匯以錨點、原坐標與題目／子題映射驗證身分。
 目標格值變動本身不代表映射改變；重匯會覆寫已驗證的原目標格。
 end note
