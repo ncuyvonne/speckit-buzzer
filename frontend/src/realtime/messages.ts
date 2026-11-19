@@ -7,6 +7,11 @@ export interface QuestionLayoutSummary {
   readonly answerCount: number;
 }
 
+export interface FairRankingSettings {
+  readonly enabled: boolean;
+  readonly delaySeconds: number | null;
+}
+
 export interface SubAnswer {
   readonly placeholderNumber: number;
   readonly answerText: string;
@@ -39,6 +44,8 @@ export type ErrorCode =
   | 'ANSWER_LOCKED'
   | 'GROUP_ANSWER_INCOMPLETE'
   | 'GROUP_ANSWER_INVALID'
+  | 'FAIR_RANKING_INVALID'
+  | 'RESULTS_NOT_READY'
   | 'SHEET_WRITE_FAILED'
   | 'SHEET_WRITE_UNCONFIRMED';
 
@@ -86,6 +93,8 @@ export type ClientMessage =
   | { type: 'buzzerResults.submitAnswer'; requestId: string; payload: SubmitAnswerPayload }
   | { type: 'buzzerResults.getTeacherProgress'; requestId: string; payload: Record<string, never> }
   | { type: 'buzzerResults.getStudentResults'; requestId: string; payload: Record<string, never> }
+  | { type: 'buzzerResults.setFairRanking'; requestId: string; payload: FairRankingSettings }
+  | { type: 'buzzerResults.exportCsv'; requestId: string; payload: Record<string, never> }
   | { type: 'activity.advance'; requestId: string; payload: { from: ActivityStage; to: ActivityStage } }
   | {
       type: 'guidedNotes.import';
@@ -98,6 +107,8 @@ export type ServerMessage =
   | { type: 'activity.snapshot'; payload: { stage: ActivityStage; groups: string[] } }
   | { type: 'buzzerResults.teacherProgress'; requestId?: string; payload: TeacherProgress }
   | { type: 'buzzerResults.studentResults'; requestId: string; payload: StudentResults }
+  | { type: 'buzzerResults.fairRankingConfigured'; requestId: string; payload: FairRankingSettings }
+  | { type: 'buzzerResults.csvReady'; requestId: string; payload: { fileName: string; csvText: string } }
   | { type: 'buzzerResults.questionList'; payload: { questionIds: string[]; questionLayouts?: QuestionLayoutSummary[] } }
   | {
       type: 'buzzerResults.ownProgress';
@@ -149,6 +160,7 @@ export interface TeacherProgress {
     readonly groups: readonly {
       readonly groupId: string;
       readonly submitted: boolean;
+      readonly rank: number | null;
       readonly answerText: string | null;
       readonly answers?: readonly SubAnswer[] | null;
     }[];
@@ -167,6 +179,11 @@ export interface StudentQuestionResult {
   readonly ownAnswers?: readonly SubAnswer[] | null;
   readonly ownStatus: 'SUBMITTED' | 'NOT_SUBMITTED';
   readonly ownGroupWon: boolean;
+  readonly groups: readonly {
+    readonly groupId: string;
+    readonly submitted: boolean;
+    readonly rank: number | null;
+  }[];
 }
 
 export interface StudentResults {

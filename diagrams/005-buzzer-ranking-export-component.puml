@@ -1,0 +1,30 @@
+@startuml
+title 005 搶答公平順位與 CSV 匯出 - 組件圖
+left to right direction
+
+actor 教師
+actor 學生
+component "教師活動控制" as TeacherUI
+component "學生作答與結果頁" as StudentUI
+component "活動服務" as ActivityService
+component "順位服務" as RankingService
+component "角色可見性篩選" as Visibility
+component "CSV 匯出服務" as CsvService
+component "活動與作答狀態\n（程序記憶體）" as ActivityData
+
+教師 --> TeacherUI : 設定／檢視／匯出
+學生 --> StudentUI : 作答／查看結果
+TeacherUI --> ActivityService : 活動設定與階段
+StudentUI --> ActivityService : 有效答案
+ActivityService --> RankingService : 伺服器接收時間、設定
+RankingService --> ActivityData : 儲存有效時間與順位
+ActivityService --> ActivityData : 活動設定與答案
+TeacherUI --> Visibility : 請求教師視圖
+StudentUI --> Visibility : 請求學生視圖
+Visibility --> ActivityData : 讀取活動結果
+Visibility --> RankingService : 讀取順位
+TeacherUI --> CsvService : 結束後匯出
+CsvService --> ActivityData : 讀取完整活動結果
+CsvService --> RankingService : 讀取完整順位
+CsvService --> TeacherUI : CSV 檔案
+@enduml

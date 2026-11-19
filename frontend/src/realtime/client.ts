@@ -5,6 +5,7 @@ import type {
   ActivityStage,
   ClientMessage,
   ErrorCode,
+  FairRankingSettings,
   GuidedNotesErrorCode,
   QuestionLayoutSummary,
   SubmitAnswerPayload,
@@ -69,6 +70,26 @@ function isValidNullableString(value: unknown): value is string | null {
   return typeof value === 'string' || value === null;
 }
 
+function isFairRankingSettings(value: unknown): value is FairRankingSettings {
+  return isRecord(value)
+    && typeof value.enabled === 'boolean'
+    && (value.delaySeconds === null || (typeof value.delaySeconds === 'number' && Number.isFinite(value.delaySeconds)));
+}
+
+function isRankedGroups(value: unknown): value is Array<Record<string, unknown> & {
+  groupId: string; submitted: boolean; rank: number | null;
+}> {
+  if (!Array.isArray(value) || !value.every((group) => isRecord(group)
+    && typeof group.groupId === 'string'
+    && typeof group.submitted === 'boolean'
+    && (group.rank === null || (Number.isSafeInteger(group.rank) && Number(group.rank) > 0))
+    && (group.submitted ? group.rank !== null : group.rank === null))) return false;
+  const ranks = value.map((group) => (group as Record<string, unknown>).rank)
+    .filter((rank): rank is number => typeof rank === 'number')
+    .sort((left, right) => left - right);
+  return ranks.every((rank, index) => rank === index + 1);
+}
+
 function questionLayoutsFor(
   questionIds: readonly string[],
   value: unknown,
@@ -102,12 +123,12 @@ function isTeacherProgress(value: unknown): value is TeacherProgress {
   return value.questions.every((question) => isRecord(question)
     && typeof question.questionId === 'string'
     && Array.isArray(question.groups)
+    && isRankedGroups(question.groups)
     && question.groups.every((group) => isRecord(group)
-      && typeof group.groupId === 'string'
-      && typeof group.submitted === 'boolean'
       && isValidNullableString(group.answerText)
       && hasValidOptionalSubAnswers(group, 'answers'))
     && (typeof question.winningGroupId === 'string' || question.winningGroupId === null)
+    && (question.groups.find((group) => group.rank === 1)?.groupId ?? null) === question.winningGroupId
     && isValidNullableString(question.winningAnswer)
     && hasValidOptionalSubAnswers(question, 'winningAnswers'));
 }
@@ -116,6 +137,7 @@ function isStudentResults(value: unknown): value is StudentResults {
   if (!isRecord(value) || !Array.isArray(value.questions)) return false;
   return value.questions.every((question) => isRecord(question)
     && typeof question.questionId === 'string'
+    && isRankedGroups(question.groups)
     && (typeof question.winningGroupId === 'string' || question.winningGroupId === null)
     && isValidNullableString(question.winningAnswer)
     && hasValidOptionalSubAnswers(question, 'winningAnswers')
@@ -154,6 +176,7 @@ export class RealtimeClient {
   #stopped = true;
   #awaitingInitialSnapshot = false;
   readonly #pendingBuzzerRequests = new Map<string, { questionId: string; payload: SubmitAnswerPayload }>();
+  readonly #pendingCsvExportRequests = new Set<string>();
 
   constructor(options: RealtimeClientOptions = {}) {
     this.store = options.store ?? new ActivityStore();
@@ -235,6 +258,19 @@ export class RealtimeClient {
     return this.#send({ type: 'buzzerResults.getStudentResults', requestId: createRequestId(), payload: {} });
   }
 
+  setFairRanking(settings: FairRankingSettings): boolean {
+    return this.#send({ type: 'buzzerResults.setFairRanking', requestId: createRequestId(), payload: settings });
+  }
+
+  exportCsv(): boolean {
+    const requestId = createRequestId();
+    const sent = this.#send({ type: 'buzzerResults.exportCsv', requestId, payload: {} });
+    if (!sent) return false;
+    this.#pendingCsvExportRequests.add(requestId);
+    this.buzzerResults.beginCsvExport();
+    return true;
+  }
+
   advance(from: ActivityStage, to: ActivityStage): boolean {
     return this.#send({ type: 'activity.advance', requestId: createRequestId(), payload: { from, to } });
   }
@@ -300,6 +336,7 @@ export class RealtimeClient {
       if (this.#socket !== socket) return;
       this.#socket = null;
       this.#pendingBuzzerRequests.clear();
+      this.#pendingCsvExportRequests.clear();
       this.store.resetConnectionRole();
       if (this.#stopped) {
         this.store.update({ connection: 'disconnected' });
@@ -346,6 +383,12 @@ export class RealtimeClient {
       }
       return;
     }
+    if (message.type === 'buzzerResults.fairRankingConfigured') {
+      if (this.store.getSnapshot().role === 'TEACHER' && isFairRankingSettings(payload)) {
+        this.buzzerResults.applyFairRankingSettings(payload);
+      }
+      return;
+    }
     if (message.type === 'buzzerResults.ownProgress'
       && this.store.getSnapshot().role === 'STUDENT'
       && Array.isArray(payload.questions)) {
@@ -362,6 +405,17 @@ export class RealtimeClient {
     if (message.type === 'buzzerResults.studentResults') {
       if (this.store.getSnapshot().role === 'STUDENT' && isStudentResults(payload)) {
         this.buzzerResults.applyStudentResults(payload);
+      }
+      return;
+    }
+    if (message.type === 'buzzerResults.csvReady') {
+      if (this.store.getSnapshot().role === 'TEACHER'
+        && typeof message.requestId === 'string'
+        && this.#pendingCsvExportRequests.delete(message.requestId)
+        && typeof payload.fileName === 'string'
+        && typeof payload.csvText === 'string') {
+        downloadCsv(payload.fileName, payload.csvText);
+        this.buzzerResults.completeCsvExport(payload.fileName);
       }
       return;
     }
@@ -449,6 +503,9 @@ export class RealtimeClient {
     }
     if (message.type === 'error' && typeof payload.code === 'string' && typeof payload.message === 'string') {
       const requestId = typeof message.requestId === 'string' ? message.requestId : null;
+      if (requestId !== null && this.#pendingCsvExportRequests.delete(requestId)) {
+        this.buzzerResults.failCsvExport(payload.message);
+      }
       const pending = requestId === null ? undefined : this.#pendingBuzzerRequests.get(requestId);
       if (requestId !== null && pending) {
         this.buzzerResults.applyError(payload.code as ErrorCode, payload.message, pending.questionId);
@@ -490,4 +547,16 @@ export class RealtimeClient {
     clearTimeout(this.#reconnectTimer);
     this.#reconnectTimer = null;
   }
+}
+
+function downloadCsv(fileName: string, csvText: string): void {
+  const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

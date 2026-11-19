@@ -1,0 +1,32 @@
+@startuml
+title 005 搶答公平順位與 CSV 匯出 - 時序圖
+
+actor 教師
+actor 學生
+participant "活動服務" as Activity
+participant "順位服務" as Ranking
+participant "結果可見性篩選" as Visibility
+participant "CSV 匯出服務" as CSV
+
+教師 -> Activity : 準備活動（公平順位、延遲）
+Activity --> 教師 : 設定確認
+學生 -> Activity : 提交題目答案
+Activity -> Activity : 驗證身分、階段、題號及唯一提交
+Activity -> Ranking : 伺服器接收時間、有效答案
+alt 公平順位關閉
+  Ranking -> Ranking : 有效時間 = 收到時間
+else 公平順位開啟
+  Ranking -> Ranking : 快照其他題已成功數 K
+  Ranking -> Ranking : 有效時間 = 收到時間 + K × 延遲
+end
+Ranking --> Activity : 更新完整順位與成功組別
+Activity --> 學生 : 僅回傳本組進度
+
+教師 -> Activity : 結束活動
+學生 -> Visibility : 查看結果
+Visibility -> Ranking : 取得完整順位
+Visibility --> 學生 : 所有順位、成功答案、本組答案
+教師 -> CSV : 匯出活動結果
+CSV -> Ranking : 取得各題所有組別順位
+CSV --> 教師 : 題目／組別明細 CSV
+@enduml

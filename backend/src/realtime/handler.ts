@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import type { AppConfig } from '../config.js';
 import { ActivityState } from '../domain/activity-state.js';
 import { BuzzerResultsQueryError, BuzzerResultsService } from '../domain/buzzer-results.js';
+import { serializeBuzzerResultsCsv } from '../domain/buzzer-results-csv.js';
 import { GroupRoster } from '../domain/group-roster.js';
 import { GuidedNotesService, GuidedNotesServiceError } from '../guided-notes/service.js';
 import type { Question, QuestionLayoutSummary } from '../guided-notes/types.js';
@@ -96,12 +97,17 @@ export class RealtimeHub {
           payload: { ok: true },
         });
         this.#sendSnapshot(context);
+        this.#sendFairRankingSettings(context, message.requestId);
         this.#sendTeacherProgress(context);
         return;
       }
       case 'activity.advance': {
         if (context.role !== 'TEACHER') {
           this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (message.payload.to === 'BUZZING' && !this.#activity.fairRankingConfigurationValid) {
+          this.#sendError(context, 'FAIR_RANKING_INVALID', message.requestId);
           return;
         }
         const result = this.#activity.advance(message.payload.from, message.payload.to);
@@ -113,6 +119,23 @@ export class RealtimeHub {
         for (const connection of this.#connections) {
           if (connection.socket.readyState === WebSocket.OPEN) connection.socket.send(broadcast);
         }
+        return;
+      }
+      case 'buzzerResults.setFairRanking': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        const result = this.#buzzerResults.setFairRankingSettings(message.payload);
+        if (!result.accepted) {
+          this.#sendError(context, result.code, message.requestId);
+          return;
+        }
+        send(context.socket, {
+          type: 'buzzerResults.fairRankingConfigured',
+          requestId: message.requestId,
+          payload: result.settings,
+        });
         return;
       }
       case 'student.join': {
@@ -203,6 +226,28 @@ export class RealtimeHub {
           if (error instanceof BuzzerResultsQueryError) this.#sendError(context, error.code, message.requestId);
           else this.#sendError(context, 'INVALID_MESSAGE', message.requestId);
         }
+        return;
+      }
+      case 'buzzerResults.exportCsv': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (this.#activity.stage !== 'ENDED') {
+          this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+          return;
+        }
+        const progress = this.#buzzerResults.getTeacherProgress();
+        if (this.#activity.questionCount === 0 || progress.questions.length === 0) {
+          this.#sendError(context, 'RESULTS_NOT_READY', message.requestId);
+          return;
+        }
+        const fileName = `buzzer-results-${new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')}.csv`;
+        send(context.socket, {
+          type: 'buzzerResults.csvReady',
+          requestId: message.requestId,
+          payload: { fileName, csvText: serializeBuzzerResultsCsv(progress) },
+        });
         return;
       }
       case 'guidedNotes.import': {
@@ -309,6 +354,15 @@ export class RealtimeHub {
       type: 'buzzerResults.teacherProgress',
       ...(requestId ? { requestId } : {}),
       payload: this.#buzzerResults.getTeacherProgress(),
+    });
+  }
+
+  #sendFairRankingSettings(context: ConnectionContext, requestId: string): void {
+    if (context.role !== 'TEACHER') return;
+    send(context.socket, {
+      type: 'buzzerResults.fairRankingConfigured',
+      requestId,
+      payload: this.#buzzerResults.getFairRankingSettings(),
     });
   }
 

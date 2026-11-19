@@ -29,7 +29,9 @@ export function TeacherResultsPanel({ progress }: TeacherResultsPanelProps) {
               <ul>
                 {question.groups.map((group) => (
                   <li key={group.groupId}>
-                    <span>組別 {group.groupId}：{group.submitted ? '已提交' : '尚未提交'}</span>
+                    <span>組別 {group.groupId}：{group.submitted
+                      ? (group.rank === null ? '順位待更新' : `第 ${group.rank} 名`)
+                      : '尚未提交'}</span>
                     {group.submitted && (
                       <span>，答案：{group.answers
                         ? answersText(group.answers)

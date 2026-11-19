@@ -35,6 +35,13 @@ export function StudentResultsPanel({ results }: StudentResultsPanelProps) {
                     ? answersText(question.ownAnswers)
                     : question.ownAnswer ?? ''}`}
               </p>
+              <ul aria-label={`題目 ${question.questionId} 完整順位`}>
+                {question.groups.map((group) => (
+                  <li key={group.groupId}>
+                    組別 {group.groupId}：{group.rank === null ? '未作答' : `第 ${group.rank} 名`}
+                  </li>
+                ))}
+              </ul>
               {question.ownStatus === 'SUBMITTED' && (
                 <p>{question.ownGroupWon ? '本組勝出' : '本組未勝出'}</p>
               )}

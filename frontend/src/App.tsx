@@ -17,7 +17,7 @@ export default function App() {
   const state = useSyncExternalStore(client.store.subscribe, client.store.getSnapshot);
   const buzzerState = useSyncExternalStore(client.buzzerResults.subscribe, client.buzzerResults.getSnapshot);
   const teacherError = state.serverError &&
-    ['AUTH_INVALID', 'STAGE_CONFLICT'].includes(state.serverError.code)
+    ['AUTH_INVALID', 'STAGE_CONFLICT', 'FAIR_RANKING_INVALID'].includes(state.serverError.code)
     ? state.serverError.message
     : null;
   const authorizationError = state.serverError?.code === 'AUTH_REQUIRED'
@@ -45,6 +45,10 @@ export default function App() {
           onLogin={(password) => client.authenticate(password)}
           onAdvance={(from, to) => client.advance(from, to)}
           resultsProgress={buzzerState.teacherProgress}
+          fairRankingSettings={buzzerState.fairRankingSettings}
+          onSetFairRanking={(settings) => client.setFairRanking(settings)}
+          csvExport={buzzerState.csvExport}
+          onExportCsv={() => client.exportCsv()}
         />
       )}
       {state.role === 'TEACHER' && (
