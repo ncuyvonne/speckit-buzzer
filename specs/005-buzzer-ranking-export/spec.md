@@ -1,6 +1,6 @@
 # Feature Specification: 005 搶答公平順位與 CSV 匯出
 
-**Feature Branch**: `codex/005-buzzer-ranking-export` (based on the approved Feature 004 PR #4 head `890395169abaede0c3d4362e630d78e8f2b4bd99`; PR #4 remains open, so Feature 005 is stacked on it)
+**Feature Branch**: `codex/005-buzzer-ranking-export` (PR #5 targets `main`, which includes Feature 004 PR #4 merge commit `8d12932e415b23b601c26faf48d28b11303f8662`; branch history retains the approved Feature 004 head `890395169abaede0c3d4362e630d78e8f2b4bd99`)
 
 **Created**: 2026-11-19
 

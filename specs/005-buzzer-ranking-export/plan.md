@@ -1,6 +1,6 @@
 # Implementation Plan: 005 搶答公平順位與 CSV 匯出
 
-**Branch**: `codex/005-buzzer-ranking-export` *(isolated worktree based on approved Feature 004 PR #4 head `890395169abaede0c3d4362e630d78e8f2b4bd99`; PR #4 is open, so this is a stacked branch)* | **Date**: 2026-11-19 | **Spec**: [spec.md](./spec.md)
+**Branch**: `codex/005-buzzer-ranking-export` *(PR #5 targets `main`, which includes Feature 004 PR #4 merge commit `8d12932e415b23b601c26faf48d28b11303f8662`; its history retains reviewed head `890395169abaede0c3d4362e630d78e8f2b4bd99`)* | **Date**: 2026-11-19 | **Spec**: [spec.md](./spec.md)
 
 **Input**: Feature specification in `specs/005-buzzer-ranking-export/spec.md`; primary blueprints are the Feature 005 PlantUML sources and PNGs under `./diagrams/`.
 
@@ -39,7 +39,7 @@
 | III. 正常與邊界案例測試 | 延遲開關、快照、拒絕提交、角色隔離、CSV escaping／BOM 測試已完成；完整執行結果見 quickstart 驗證紀錄。 | PASS |
 | IV. 共享狀態與時間以伺服器為準 | 同步接受操作快照成功題數、記錄 received order，計算 effective time；不採用 client time 或 client winner。 | PASS |
 | V. 程式碼與文件一致 | 資料模型、WebSocket／CSV 契約、quickstart 與三張 005 PlantUML 圖相互對照。 | PASS |
-| VI. 獨立 branch 與 Pull Request | Feature 005 的專用 worktree branch `codex/005-buzzer-ranking-export` 已建立；提交 PR 審查，並依 PR #4 合併狀態 rebase／retarget。 | PASS（分支已建立；PR 流程依 T036 進行） |
+| VI. 獨立 branch 與 Pull Request | Feature 005 的專用 branch 已建立並提交 PR #5；PR #4 合併後已將 PR #5 retarget 到 `main`，確認 45 個變更檔案均屬 Feature 005 且 GitHub 顯示可合併。因 PR #4 的 merge commit 保留共同歷史且無 004 檔案差異，不需 rebase。 | PASS（PR review 尚待重新審查） |
 | VII. PlantUML 設計優先 | 組件、類別及時序圖作為服務責任、資料欄位、訊息與結果投影的主要藍圖；組件圖已明確標示程序記憶體。 | PASS |
 | 本機執行範圍 | 沿用 loopback；不增加雲端部署、遠端服務或持久化資料庫。 | PASS |
 
@@ -130,7 +130,7 @@ diagrams/
 
 `specs/005-buzzer-ranking-export/tasks.md` 已由 `$speckit-tasks` 產生，依序拆分公平設定與驗證、有效時間快照和排名、教師／學生結果投影、CSV 產生與 WebSocket 下載，以及 Vitest、WebSocket integration、Playwright 和圖表一致性驗收。跨文件分析後，tasks 必須涵蓋以 `GROUP_IDS` 組數量測 SC-006、整題無提交的 CSV 邊界，以及不判定答案正誤／不計分的範圍限制。
 
-**Branch/base gate**: Feature 004 PR [#4](https://github.com/ncuyvonne/speckit-buzzer/pull/4) has an `APPROVED` review on head `890395169abaede0c3d4362e630d78e8f2b4bd99` and was verified open and unmerged on 2026-11-19. Feature 005 uses that exact reviewed revision as its base in isolated worktree branch `codex/005-buzzer-ranking-export`; while PR #4 is open, the Feature 005 PR targets `codex/004-question-groups`. After PR #4 merges, rebase Feature 005 onto the resulting integrated revision and retarget its PR before merge. The original checkout remains `codex-003-buzzer-results` with unrelated pending changes and must not be switched or committed wholesale. Only Feature 005 implementation and its `specs/005-buzzer-ranking-export/` and `diagrams/005-buzzer-ranking-export-*` artifacts belong in this worktree.
+**Branch/base gate**: Feature 004 PR [#4](https://github.com/ncuyvonne/speckit-buzzer/pull/4) was approved on head `890395169abaede0c3d4362e630d78e8f2b4bd99` and later merged into `main` with merge commit `8d12932e415b23b601c26faf48d28b11303f8662`. Feature 005 PR #5 was retargeted from `codex/004-question-groups` to `main`. GitHub reports the PR open and mergeable; its 45 changed files contain Feature 005 code, tests, specs, and diagrams, with no `specs/004-*` or `diagrams/004-*` files. The merge commit retains the reviewed Feature 004 head in the branch history, so no rebase is needed while this remains true; re-evaluate only if conflicts or Feature 004 artifacts appear. The original checkout remains `codex-003-buzzer-results` with unrelated pending changes and must not be switched or committed wholesale. Only Feature 005 implementation and its `specs/005-buzzer-ranking-export/` and `diagrams/005-buzzer-ranking-export-*` artifacts belong in this worktree.
 
 ## Complexity Tracking
 
