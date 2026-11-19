@@ -4,6 +4,7 @@ import { ActivityState } from '../domain/activity-state.js';
 import { BuzzerResultsQueryError, BuzzerResultsService } from '../domain/buzzer-results.js';
 import { GroupRoster } from '../domain/group-roster.js';
 import { GuidedNotesService, GuidedNotesServiceError } from '../guided-notes/service.js';
+import type { Question, QuestionLayoutSummary } from '../guided-notes/types.js';
 import { isTeacherPasswordValid } from '../domain/teacher-auth.js';
 import { decodeClientMessage, encodeError, type ClientMessage, type ErrorCode } from './protocol.js';
 
@@ -25,6 +26,14 @@ export interface RealtimeHandlerOptions {
 
 function send(socket: WebSocket, message: unknown): void {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+
+function questionLayoutSummary(question: Question): QuestionLayoutSummary {
+  return {
+    questionId: question.questionId,
+    kind: question.kind ?? 'SINGLE',
+    answerCount: question.kind === 'GROUP' ? question.answerSlots.length : 1,
+  };
 }
 
 export class RealtimeHub {
@@ -150,10 +159,12 @@ export class RealtimeHub {
         const result = this.#buzzerResults.submitAnswer(
           context.groupId,
           message.payload.questionId,
-          message.payload.answerText,
+          typeof message.payload.answerText === 'string'
+            ? message.payload.answerText
+            : message.payload.subAnswers ?? [],
         );
         if (!result.accepted) {
-          this.#sendError(context, result.code, message.requestId);
+          this.#sendError(context, result.code, message.requestId, result.message);
           return;
         }
         send(context.socket, {
@@ -263,6 +274,7 @@ export class RealtimeHub {
           worksheetTitle: this.#activity.worksheet?.worksheetTitle ?? null,
           questionIds: this.#activity.questions.map((question) => question.questionId),
           questionCount: this.#activity.questionCount,
+          questionLayouts: this.#activity.questions.map(questionLayoutSummary),
         },
       });
     }
@@ -272,7 +284,10 @@ export class RealtimeHub {
     if (context.role !== 'STUDENT') return;
     send(context.socket, {
       type: 'buzzerResults.questionList',
-      payload: { questionIds: this.#activity.questions.map((question) => question.questionId) },
+      payload: {
+        questionIds: this.#activity.questions.map((question) => question.questionId),
+        questionLayouts: this.#activity.questions.map(questionLayoutSummary),
+      },
     });
   }
 

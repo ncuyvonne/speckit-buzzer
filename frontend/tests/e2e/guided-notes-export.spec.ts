@@ -38,7 +38,10 @@ test('ENDED teacher confirms export and sees written and cleared counts only aft
     status: 'READY',
     answers: [
       { questionId: '1', groupId: '1', answerText: '本次答案一' },
-      { questionId: '4', groupId: '2', answerText: '本次答案四' },
+      { questionId: '2', groupId: '1', answers: [
+        { placeholderNumber: 1, answerText: '題組二答案一' },
+        { placeholderNumber: 2, answerText: '題組二答案二' },
+      ] },
     ],
   };
   await page.goto('/');
@@ -50,14 +53,107 @@ test('ENDED teacher confirms export and sees written and cleared counts only aft
   await expect(page.getByText(/寫回完成/)).toHaveCount(0);
   await confirmExport(page);
   await expect(page.getByText(/寫回完成/)).toBeVisible();
-  await expect(page.getByText('更新 2 格，清空 1 格')).toBeVisible();
+  await expect(page.getByText('更新 3 格，清空 0 格')).toBeVisible();
   expect(guidedNotesSheets.writeBatches).toHaveLength(1);
+  expect(guidedNotesSheets.exportBatches[0]?.writes.map((write) => [write.questionId, write.rowNumber, write.value]))
+    .toEqual([
+      ['1', 3, '本次答案一'],
+      ['2', 4, '題組二答案一'],
+      ['2', 5, '題組二答案二'],
+    ]);
   expect(guidedNotesSheets.getCellState({
     spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
   }, 'A3').value).toBe('本次答案一');
   expect(guidedNotesSheets.getCellState({
     spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
-  }, 'A5').value).toBe('');
+  }, 'A5').value).toBe('題組二答案二');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A7').value).toBe('（1）');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A8').value).toBe('（2）');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A9').value).toBe('（3）');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A4').value).toBe('題組二答案一');
+  expect(guidedNotesSheets.getCellState({
+    spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1',
+  }, 'A5').value).toBe('題組二答案二');
+});
+
+test('confirmed export reuses anchored targets after value edits and rejects moved structure without another batch', async ({
+  page,
+  winningResultsProvider,
+  guidedNotesSheets,
+}) => {
+  const worksheet = { spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1' };
+  winningResultsProvider.snapshot = { status: 'READY', answers: [{
+    questionId: '2', groupId: '1', answers: [
+      { placeholderNumber: 1, answerText: 'first 1' },
+      { placeholderNumber: 2, answerText: 'first 2' },
+    ],
+  }] };
+  await page.goto('/');
+  await waitForConnected(page);
+  await loginTeacher(page);
+  await importWorksheet(page);
+  await endActivity(page);
+
+  await confirmExport(page);
+  await expect(page.getByText(/寫回完成/)).toBeVisible();
+  expect(guidedNotesSheets.exportBatches).toHaveLength(1);
+  const firstAnchorIds = guidedNotesSheets.getDeveloperMetadata(worksheet).map((anchor) => anchor.metadataId);
+  expect(firstAnchorIds).toHaveLength(9);
+
+  guidedNotesSheets.setCellState(worksheet, 'A4', '教師編輯了目標答案格');
+  winningResultsProvider.snapshot = { status: 'READY', answers: [{
+    questionId: '2', groupId: '2', answers: [
+      { placeholderNumber: 1, answerText: 'repeat 1' },
+      { placeholderNumber: 2, answerText: 'repeat 2' },
+    ],
+  }] };
+  await confirmExport(page);
+  await expect(page.getByText('更新 2 格，清空 1 格')).toBeVisible();
+  expect(guidedNotesSheets.exportBatches).toHaveLength(2);
+  expect(guidedNotesSheets.exportBatches[1]?.writes.map((write) => write.rowNumber)).toContain(4);
+  expect(guidedNotesSheets.exportBatches[1]?.anchors).toEqual([]);
+  expect(guidedNotesSheets.getDeveloperMetadata(worksheet).map((anchor) => anchor.metadataId)).toEqual(firstAnchorIds);
+  expect(guidedNotesSheets.getCellState(worksheet, 'A4').value).toBe('repeat 1');
+  expect(guidedNotesSheets.getCellState(worksheet, 'A7').value).toBe('（1）');
+  expect(guidedNotesSheets.getCellState(worksheet, 'A8').value).toBe('（2）');
+  expect(guidedNotesSheets.getCellState(worksheet, 'A9').value).toBe('（3）');
+
+  guidedNotesSheets.insertBlankRowBefore(worksheet, 5);
+  await confirmExport(page);
+  await expect(page.getByRole('alert')).toContainText('已移動');
+  expect(guidedNotesSheets.exportBatches).toHaveLength(2);
+});
+
+test('confirmed export refuses to repeat when a persisted anchor is missing', async ({
+  page,
+  winningResultsProvider,
+  guidedNotesSheets,
+}) => {
+  const worksheet = { spreadsheetId: 'e2e-valid-sheet', sheetId: 7, worksheetTitle: '工作表1' };
+  winningResultsProvider.snapshot = { status: 'READY', answers: [{ questionId: '1', groupId: '1', answerText: 'winner' }] };
+  await page.goto('/');
+  await waitForConnected(page);
+  await loginTeacher(page);
+  await importWorksheet(page);
+  await endActivity(page);
+
+  await confirmExport(page);
+  expect(guidedNotesSheets.exportBatches).toHaveLength(1);
+  const anchor = guidedNotesSheets.getDeveloperMetadata(worksheet)[0];
+  expect(anchor?.metadataId).toBeDefined();
+  guidedNotesSheets.removeDeveloperMetadata(worksheet, anchor!.metadataId!);
+
+  await confirmExport(page);
+  await expect(page.getByRole('alert')).toContainText('錨點已遺失');
+  expect(guidedNotesSheets.exportBatches).toHaveLength(1);
 });
 
 test('ENDED teacher gets import guidance without calling results or Sheets when no worksheet was imported', async ({

@@ -37,6 +37,61 @@ describe('buzzer results submit protocol', () => {
     }), false)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE', requestId: 'submit-2' });
   });
 
+  it('decodes grouped answers as an ordered vector without accepting client authority fields', () => {
+    const message = {
+      type: 'buzzerResults.submitAnswer',
+      requestId: 'group-submit',
+      payload: {
+        questionId: 'G',
+        subAnswers: [
+          { placeholderNumber: 1, answerText: '第一格' },
+          { placeholderNumber: 2, answerText: '第二格' },
+        ],
+      },
+    };
+    expect(decodeClientMessage(encode(message), false)).toEqual({ ok: true, message });
+  });
+
+  it.each([
+    { questionId: 'G', answerText: 'single', subAnswers: [] },
+    { questionId: 'G', subAnswers: [{ placeholderNumber: '1', answerText: 'x' }] },
+    { questionId: 'G', subAnswers: [{ placeholderNumber: 1, answerText: null }] },
+    { questionId: 'G', subAnswers: [{ placeholderNumber: 1, answerText: 'x', groupId: 'A' }] },
+    { questionId: 'G', subAnswers: 'not-an-array' },
+  ])('rejects malformed grouped payloads %#', (payload) => {
+    expect(decodeClientMessage(encode({
+      type: 'buzzerResults.submitAnswer',
+      requestId: 'bad-group',
+      payload,
+    }), false)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE', requestId: 'bad-group' });
+  });
+
+  it('accepts an exact 16 KiB grouped packet and rejects one byte over', () => {
+    const packet = (targetBytes: number) => {
+      const message = {
+        type: 'buzzerResults.submitAnswer',
+        requestId: '123e4567-e89b-12d3-a456-426614174000',
+        payload: {
+          questionId: 'G',
+          subAnswers: [
+            { placeholderNumber: 1, answerText: '' },
+            { placeholderNumber: 2, answerText: 'b' },
+          ],
+        },
+      };
+      const baseBytes = Buffer.byteLength(JSON.stringify(message));
+      message.payload.subAnswers[0].answerText = 'a'.repeat(targetBytes - baseBytes);
+      return encode(message);
+    };
+    const exact = packet(16_384);
+    const oversized = packet(16_385);
+
+    expect(exact.byteLength).toBe(16_384);
+    expect(decodeClientMessage(exact, false).ok).toBe(true);
+    expect(oversized.byteLength).toBe(16_385);
+    expect(decodeClientMessage(oversized, false)).toEqual({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
   it('rejects invalid request IDs and messages over 16 KiB', () => {
     expect(decodeClientMessage(encode({
       type: 'buzzerResults.submitAnswer',

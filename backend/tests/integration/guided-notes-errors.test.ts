@@ -43,10 +43,10 @@ class PendingBatchWriteSheets extends FakeGoogleSheetsAdapter {
   #completePendingWrite: (() => void) | null = null;
   #pendingWrite: Promise<void> | null = null;
 
-  override batchWriteValues(...args: Parameters<FakeGoogleSheetsAdapter['batchWriteValues']>): Promise<void> {
+  override batchExport(...args: Parameters<FakeGoogleSheetsAdapter['batchExport']>): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.#completePendingWrite = () => {
-        this.#pendingWrite = super.batchWriteValues(...args);
+        this.#pendingWrite = super.batchExport(...args);
         void this.#pendingWrite.then(resolve, reject);
       };
     });
@@ -180,12 +180,12 @@ describe('Guided Notes integration error behavior', () => {
     const delays: number[] = [];
     let attempts = 0;
     class RejectedBatchSheets extends FakeGoogleSheetsAdapter {
-      override async batchWriteValues(...args: Parameters<FakeGoogleSheetsAdapter['batchWriteValues']>) {
+      override async batchExport(...args: Parameters<FakeGoogleSheetsAdapter['batchExport']>) {
         attempts += 1;
         if (attempts <= 2) {
           throw new GoogleSheetsIntegrationError('SHEET_WRITE_FAILED', { writeOutcome: 'DEFINITELY_NOT_APPLIED' });
         }
-        return super.batchWriteValues(...args);
+        return super.batchExport(...args);
       }
     }
     const sheets = new RejectedBatchSheets([validFixture()]);
@@ -294,10 +294,10 @@ describe('Guided Notes integration error behavior', () => {
     let time = 0;
     let writes = 0;
     class SlowReadBackSheets extends FakeGoogleSheetsAdapter {
-      override async batchWriteValues(...args: Parameters<FakeGoogleSheetsAdapter['batchWriteValues']>) {
+      override async batchExport(...args: Parameters<FakeGoogleSheetsAdapter['batchExport']>) {
         writes += 1;
         this.nextWriteFailure = { kind: 'LOST_RESPONSE', commit: 'FULL', readBack: 'AVAILABLE' };
-        const result = await super.batchWriteValues(...args);
+        const result = await super.batchExport(...args);
         return result;
       }
 

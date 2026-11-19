@@ -1,0 +1,41 @@
+@startuml
+title 004 題組與多填空 - 組件圖
+
+actor "老師" as Teacher
+actor "學生" as Student
+
+component "課堂介面（App 與面板）" as UI
+component "WebSocket Client" as Client
+component "RealtimeHub" as Hub
+component "GuidedNotesService" as Notes
+component "WorksheetParser" as Parser
+component "BuzzerResultsService" as Answers
+component "ActivityState" as Activity
+component "BuzzerWinningResultsProvider" as Results
+component "Google Sheets Adapter" as Sheets
+cloud "Google Sheets" as Sheet
+
+Teacher --> UI : 匯入／匯出
+Student --> UI : 查看題目／提交答案
+UI --> Client : 作答內容／操作
+Client --> Hub : 請求與資料同步
+Hub --> Notes : 匯入／匯出流程
+Notes --> Parser : 辨識題號與子題佔位符
+Notes --> Sheets : 讀取格值與列欄標記／單一批次寫回
+Sheets --> Sheet
+Hub --> Answers : 驗證完整答案組
+Answers --> Activity : 題目型態與活動階段
+Results --> Answers : 取得伺服器端完整勝出答案組
+Notes --> Activity : 更新學習單結構與首次匯出定位紀錄
+Notes --> Results : 取得活動答案結果
+
+note right of Client
+題組完整提交以 UTF-8 計算，最多 16 KiB。
+超限保留答案並提示縮短。
+end note
+
+note right of Answers
+2 至 20 個子答案為一次提交單位。
+服務同步記錄完整提交與順位。
+end note
+@enduml

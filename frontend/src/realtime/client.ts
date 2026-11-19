@@ -2,10 +2,19 @@ import { ActivityStore } from '../state/activity';
 import { BuzzerResultsStore, type OwnQuestionProgress } from '../state/buzzer-results';
 import { StudentSelection } from '../state/student-selection';
 import type {
-  ActivityStage, ClientMessage, ErrorCode, GuidedNotesErrorCode, StudentResults, TeacherProgress,
+  ActivityStage,
+  ClientMessage,
+  ErrorCode,
+  GuidedNotesErrorCode,
+  QuestionLayoutSummary,
+  SubmitAnswerPayload,
+  SubAnswer,
+  StudentResults,
+  TeacherProgress,
 } from './messages';
 
 const RECONNECT_BACKOFF_MS = [500, 1_000, 2_000, 4_000, 8_000] as const;
+const MAX_MESSAGE_BYTES = 16_384;
 
 interface LocationLike {
   readonly protocol: string;
@@ -28,7 +37,13 @@ function createRequestId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') crypto.getRandomValues(bytes);
+  else bytes.forEach((_, index) => { bytes[index] = Math.floor(Math.random() * 256); });
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function isActivityStage(value: unknown): value is ActivityStage {
@@ -39,6 +54,49 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 }
 
+function isSubAnswerArray(value: unknown): value is readonly SubAnswer[] {
+  return Array.isArray(value) && value.every((answer) => isRecord(answer)
+    && Number.isSafeInteger(answer.placeholderNumber)
+    && typeof answer.answerText === 'string'
+    && Object.keys(answer).every((key) => key === 'placeholderNumber' || key === 'answerText'));
+}
+
+function hasValidOptionalSubAnswers(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || value[key] === null || isSubAnswerArray(value[key]);
+}
+
+function isValidNullableString(value: unknown): value is string | null {
+  return typeof value === 'string' || value === null;
+}
+
+function questionLayoutsFor(
+  questionIds: readonly string[],
+  value: unknown,
+): readonly QuestionLayoutSummary[] | null {
+  if (value === undefined) {
+    return questionIds.map((questionId) => ({ questionId, kind: 'SINGLE', answerCount: 1 }));
+  }
+  if (!Array.isArray(value) || value.length !== questionIds.length) return null;
+  const layouts: QuestionLayoutSummary[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const layout = value[index];
+    if (!isRecord(layout)
+      || typeof layout.questionId !== 'string'
+      || layout.questionId !== questionIds[index]
+      || (layout.kind !== 'SINGLE' && layout.kind !== 'GROUP')
+      || typeof layout.answerCount !== 'number'
+      || !Number.isSafeInteger(layout.answerCount)) return null;
+    if ((layout.kind === 'SINGLE' && layout.answerCount !== 1)
+      || (layout.kind === 'GROUP' && (layout.answerCount < 2 || layout.answerCount > 20))) return null;
+    layouts.push({
+      questionId: layout.questionId,
+      kind: layout.kind,
+      answerCount: layout.answerCount as number,
+    });
+  }
+  return layouts;
+}
+
 function isTeacherProgress(value: unknown): value is TeacherProgress {
   if (!isRecord(value) || !Array.isArray(value.questions)) return false;
   return value.questions.every((question) => isRecord(question)
@@ -47,9 +105,11 @@ function isTeacherProgress(value: unknown): value is TeacherProgress {
     && question.groups.every((group) => isRecord(group)
       && typeof group.groupId === 'string'
       && typeof group.submitted === 'boolean'
-      && (typeof group.answerText === 'string' || group.answerText === null))
+      && isValidNullableString(group.answerText)
+      && hasValidOptionalSubAnswers(group, 'answers'))
     && (typeof question.winningGroupId === 'string' || question.winningGroupId === null)
-    && (typeof question.winningAnswer === 'string' || question.winningAnswer === null));
+    && isValidNullableString(question.winningAnswer)
+    && hasValidOptionalSubAnswers(question, 'winningAnswers'));
 }
 
 function isStudentResults(value: unknown): value is StudentResults {
@@ -57,8 +117,10 @@ function isStudentResults(value: unknown): value is StudentResults {
   return value.questions.every((question) => isRecord(question)
     && typeof question.questionId === 'string'
     && (typeof question.winningGroupId === 'string' || question.winningGroupId === null)
-    && (typeof question.winningAnswer === 'string' || question.winningAnswer === null)
-    && (typeof question.ownAnswer === 'string' || question.ownAnswer === null)
+    && isValidNullableString(question.winningAnswer)
+    && hasValidOptionalSubAnswers(question, 'winningAnswers')
+    && isValidNullableString(question.ownAnswer)
+    && hasValidOptionalSubAnswers(question, 'ownAnswers')
     && (question.ownStatus === 'SUBMITTED' || question.ownStatus === 'NOT_SUBMITTED')
     && typeof question.ownGroupWon === 'boolean');
 }
@@ -71,6 +133,7 @@ const GUIDED_NOTES_ERROR_CODES = new Set<string>([
   'SHEET_NOT_FOUND',
   'SHEET_LAYOUT_INVALID',
   'QUESTION_IDS_INVALID',
+  'WORKSHEET_ALREADY_EXPORTED',
   'SHEET_READ_FAILED',
   'WORKSHEET_NOT_IMPORTED',
   'WINNING_RESULTS_UNAVAILABLE',
@@ -90,7 +153,7 @@ export class RealtimeClient {
   #reconnectAttempt = 0;
   #stopped = true;
   #awaitingInitialSnapshot = false;
-  readonly #pendingBuzzerRequests = new Map<string, { questionId: string; answerText: string }>();
+  readonly #pendingBuzzerRequests = new Map<string, { questionId: string; payload: SubmitAnswerPayload }>();
 
   constructor(options: RealtimeClientOptions = {}) {
     this.store = options.store ?? new ActivityStore();
@@ -138,18 +201,30 @@ export class RealtimeClient {
     return this.#send({ type: 'student.join', requestId: createRequestId(), payload: { groupId } });
   }
 
-  submitAnswer(questionId: string, answerText: string): boolean {
+  submitAnswer(questionId: string, answer: string | readonly SubAnswer[]): boolean {
     const requestId = createRequestId();
-    const sent = this.#send({
+    const payload: SubmitAnswerPayload = typeof answer === 'string'
+      ? { questionId, answerText: answer }
+      : { questionId, subAnswers: answer.map((item) => ({ ...item })) };
+    const message: ClientMessage = {
       type: 'buzzerResults.submitAnswer',
       requestId,
-      payload: { questionId, answerText },
-    });
-    if (sent) {
-      this.#pendingBuzzerRequests.set(requestId, { questionId, answerText });
-      this.buzzerResults.clearError();
+      payload,
+    };
+    const serialized = JSON.stringify(message);
+    if (new TextEncoder().encode(serialized).byteLength > MAX_MESSAGE_BYTES) {
+      this.buzzerResults.applyError(
+        'INVALID_MESSAGE',
+        '本題答案超過 16 KiB 傳輸上限。請縮短答案後再送出；草稿仍保留。',
+        questionId,
+      );
+      return false;
     }
-    return sent;
+    if (!this.#socket || this.#socket.readyState !== WebSocket.OPEN) return false;
+    this.#socket.send(serialized);
+    this.#pendingBuzzerRequests.set(requestId, { questionId, payload });
+    this.buzzerResults.clearError();
+    return true;
   }
 
   getTeacherProgress(): boolean {
@@ -259,7 +334,10 @@ export class RealtimeClient {
     if (message.type === 'buzzerResults.questionList'
       && this.store.getSnapshot().role === 'STUDENT'
       && isStringArray(payload.questionIds)) {
+      const layouts = questionLayoutsFor(payload.questionIds, payload.questionLayouts);
+      if (layouts === null) return;
       this.buzzerResults.applyQuestionList(payload.questionIds);
+      this.store.applyQuestionList(payload.questionIds, layouts);
       return;
     }
     if (message.type === 'buzzerResults.teacherProgress') {
@@ -274,7 +352,8 @@ export class RealtimeClient {
       const questions = payload.questions.filter((item): item is Record<string, unknown> => isRecord(item));
       if (questions.every((item) => typeof item.questionId === 'string'
         && typeof item.submitted === 'boolean'
-        && (typeof item.answerText === 'string' || item.answerText === null)
+        && isValidNullableString(item.answerText)
+        && hasValidOptionalSubAnswers(item, 'answers')
         && typeof item.locked === 'boolean')) {
         this.buzzerResults.applyOwnProgress(questions as unknown as OwnQuestionProgress[]);
       }
@@ -293,7 +372,12 @@ export class RealtimeClient {
       && payload.locked === true) {
       const pending = this.#pendingBuzzerRequests.get(message.requestId);
       if (pending && pending.questionId === payload.questionId) {
-        this.buzzerResults.applyAccepted(pending.questionId, pending.answerText);
+        this.buzzerResults.applyAccepted(
+          pending.questionId,
+          typeof pending.payload.answerText === 'string'
+            ? pending.payload.answerText
+            : pending.payload.subAnswers ?? [],
+        );
         this.#pendingBuzzerRequests.delete(message.requestId);
       }
       return;
@@ -327,7 +411,9 @@ export class RealtimeClient {
       && typeof payload.questionCount === 'number'
       && payload.questionCount === payload.questionIds.length
     ) {
-      this.store.applyGuidedNotesSnapshot(payload.worksheetTitle, payload.questionIds);
+      const layouts = questionLayoutsFor(payload.questionIds, payload.questionLayouts);
+      if (layouts === null) return;
+      this.store.applyGuidedNotesSnapshot(payload.worksheetTitle, payload.questionIds, layouts);
       return;
     }
     if (
@@ -337,7 +423,9 @@ export class RealtimeClient {
       && typeof payload.questionCount === 'number'
       && payload.questionCount === payload.questionIds.length
     ) {
-      this.store.applyGuidedNotesImport(payload.worksheetTitle, payload.questionIds);
+      const layouts = questionLayoutsFor(payload.questionIds, payload.questionLayouts);
+      if (layouts === null) return;
+      this.store.applyGuidedNotesImport(payload.worksheetTitle, payload.questionIds, layouts);
       return;
     }
     if (

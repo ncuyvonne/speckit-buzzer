@@ -41,6 +41,104 @@ class FakeWebSocket {
 describe('RealtimeClient group binding errors', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  function createInMemoryStudentSelection(): StudentSelection {
+    return new StudentSelection({
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+  }
+
+  function createConnectedStudent() {
+    vi.stubGlobal('WebSocket', { OPEN: 1, CLOSING: 2 });
+    const socket = new FakeWebSocket();
+    const client = new RealtimeClient({
+      studentSelection: createInMemoryStudentSelection(),
+      location: { protocol: 'http:', host: 'localhost' },
+      createSocket: () => socket as unknown as WebSocket,
+    });
+    client.connect();
+    socket.open();
+    socket.receive({ type: 'student.joined', requestId: 'joined', payload: { ok: true, groupId: 'A' } });
+    return { client, socket };
+  }
+
+  it('stores the teacher question layouts with top-level question counts', () => {
+    vi.stubGlobal('WebSocket', { OPEN: 1, CLOSING: 2 });
+    const socket = new FakeWebSocket();
+    const client = new RealtimeClient({
+      studentSelection: createInMemoryStudentSelection(),
+      location: { protocol: 'http:', host: 'localhost' },
+      createSocket: () => socket as unknown as WebSocket,
+    });
+
+    client.connect();
+    socket.open();
+    socket.receive({ type: 'teacher.authenticated', requestId: 'teacher', payload: { ok: true } });
+    socket.receive({
+      type: 'guidedNotes.snapshot',
+      payload: {
+        worksheetTitle: '工作表1',
+        questionIds: ['1', '2', '3'],
+        questionCount: 3,
+        questionLayouts: [
+          { questionId: '1', kind: 'SINGLE', answerCount: 1 },
+          { questionId: '2', kind: 'GROUP', answerCount: 2 },
+          { questionId: '3', kind: 'GROUP', answerCount: 4 },
+        ],
+      },
+    });
+
+    expect(client.store.getSnapshot()).toMatchObject({
+      worksheetTitle: '工作表1',
+      questionIds: ['1', '2', '3'],
+      questionCount: 3,
+      questionLayouts: [
+        { questionId: '1', kind: 'SINGLE', answerCount: 1 },
+        { questionId: '2', kind: 'GROUP', answerCount: 2 },
+        { questionId: '3', kind: 'GROUP', answerCount: 4 },
+      ],
+    });
+  });
+
+  it('gives students only the question layout summary and keeps worksheet references private', () => {
+    vi.stubGlobal('WebSocket', { OPEN: 1, CLOSING: 2 });
+    const socket = new FakeWebSocket();
+    const client = new RealtimeClient({
+      studentSelection: createInMemoryStudentSelection(),
+      location: { protocol: 'http:', host: 'localhost' },
+      createSocket: () => socket as unknown as WebSocket,
+    });
+
+    client.connect();
+    socket.open();
+    socket.receive({ type: 'student.joined', requestId: 'join', payload: { ok: true, groupId: 'A' } });
+    socket.receive({
+      type: 'buzzerResults.questionList',
+      payload: {
+        questionIds: ['1', '2'],
+        questionLayouts: [
+          { questionId: '1', kind: 'SINGLE', answerCount: 1 },
+          { questionId: '2', kind: 'GROUP', answerCount: 3 },
+        ],
+      },
+    });
+
+    const state = client.store.getSnapshot();
+    expect(state).toMatchObject({
+      role: 'STUDENT',
+      worksheetTitle: null,
+      questionIds: ['1', '2'],
+      questionCount: 2,
+      questionLayouts: [
+        { questionId: '1', kind: 'SINGLE', answerCount: 1 },
+        { questionId: '2', kind: 'GROUP', answerCount: 3 },
+      ],
+    });
+    expect(state.questionLayouts.every((layout) => Object.keys(layout).sort().join(',')
+      === 'answerCount,kind,questionId')).toBe(true);
+  });
+
   it('preserves the joined student role and saved group when a rebind is rejected', () => {
     vi.stubGlobal('WebSocket', { OPEN: 1, CLOSING: 2 });
     const values = new Map<string, string>();
@@ -72,5 +170,162 @@ describe('RealtimeClient group binding errors', () => {
 
     expect(client.store.getSnapshot()).toMatchObject({ role: 'STUDENT', selectedGroupId: 'A' });
     expect(selection.read()).toBe('A');
+  });
+
+  it('sends a complete multibyte group packet at exactly 16 KiB and accepts its acknowledgment', () => {
+    const requestId = '123e4567-e89b-12d3-a456-426614174000';
+    vi.stubGlobal('crypto', { randomUUID: () => requestId });
+    const { client, socket } = createConnectedStudent();
+    const prefix = '中文「答案」\\\n"';
+    const base = {
+      type: 'buzzerResults.submitAnswer',
+      requestId,
+      payload: {
+        questionId: '題組G',
+        subAnswers: [
+          { placeholderNumber: 1, answerText: prefix },
+          { placeholderNumber: 2, answerText: '第二格' },
+        ],
+      },
+    };
+    const baseBytes = new TextEncoder().encode(JSON.stringify(base)).byteLength;
+    const answers = [
+      { placeholderNumber: 1, answerText: `${prefix}${'x'.repeat(16_384 - baseBytes)}` },
+      { placeholderNumber: 2, answerText: '第二格' },
+    ];
+
+    expect(new TextEncoder().encode(JSON.stringify({ ...base, payload: { questionId: '題組G', subAnswers: answers } })).byteLength)
+      .toBe(16_384);
+    expect(client.submitAnswer('題組G', answers)).toBe(true);
+    expect(socket.sent).toHaveLength(1);
+    expect(new TextEncoder().encode(socket.sent[0]).byteLength).toBe(16_384);
+    expect(JSON.parse(socket.sent[0]!)).toMatchObject({ requestId, payload: { questionId: '題組G', subAnswers: answers } });
+
+    socket.receive({
+      type: 'buzzerResults.submitted',
+      requestId,
+      payload: { questionId: '題組G', accepted: true, locked: true },
+    });
+    expect(client.buzzerResults.getSnapshot().acceptedSubmission).toMatchObject({ questionId: '題組G', subAnswers: answers });
+  });
+
+  it('does not send, pend, accept, or lock an oversized group draft', () => {
+    const requestId = '123e4567-e89b-12d3-a456-426614174000';
+    vi.stubGlobal('crypto', { randomUUID: () => requestId });
+    const { client, socket } = createConnectedStudent();
+    const prefix = '含中文\\n"';
+    const base = {
+      type: 'buzzerResults.submitAnswer',
+      requestId,
+      payload: {
+        questionId: 'G',
+        subAnswers: [
+          { placeholderNumber: 1, answerText: prefix },
+          { placeholderNumber: 2, answerText: 'b' },
+        ],
+      },
+    };
+    const baseBytes = new TextEncoder().encode(JSON.stringify(base)).byteLength;
+    const answers = [
+      { placeholderNumber: 1, answerText: `${prefix}${'x'.repeat(16_385 - baseBytes)}` },
+      { placeholderNumber: 2, answerText: 'b' },
+    ];
+
+    expect(client.submitAnswer('G', answers)).toBe(false);
+    expect(socket.sent).toHaveLength(0);
+    expect(client.buzzerResults.getSnapshot()).toMatchObject({
+      acceptedSubmission: null,
+      ownProgress: [],
+      error: { code: 'INVALID_MESSAGE', questionId: 'G' },
+    });
+    socket.receive({
+      type: 'buzzerResults.submitted',
+      requestId,
+      payload: { questionId: 'G', accepted: true, locked: true },
+    });
+    expect(client.buzzerResults.getSnapshot().acceptedSubmission).toBeNull();
+    expect(client.buzzerResults.getSnapshot().ownProgress).toEqual([]);
+  });
+
+  it('uses a fixed 36-byte request ID fallback while preserving the legacy single-answer payload', () => {
+    vi.stubGlobal('crypto', {});
+    const { client, socket } = createConnectedStudent();
+    expect(client.submitAnswer('1', 'legacy answer')).toBe(true);
+    const message = JSON.parse(socket.sent[0]!) as { requestId: string; payload: unknown };
+    expect(message.requestId).toMatch(/^[A-Za-z0-9_-]{36}$/);
+    expect(message.payload).toEqual({ questionId: '1', answerText: 'legacy answer' });
+  });
+
+  it('decodes teacher, own-progress, and ended student group vectors', () => {
+    vi.stubGlobal('WebSocket', { OPEN: 1, CLOSING: 2 });
+    const teacherSocket = new FakeWebSocket();
+    const teacher = new RealtimeClient({
+      studentSelection: createInMemoryStudentSelection(),
+      location: { protocol: 'http:', host: 'localhost' },
+      createSocket: () => teacherSocket as unknown as WebSocket,
+    });
+    teacher.connect();
+    teacherSocket.open();
+    teacherSocket.receive({ type: 'teacher.authenticated', requestId: 'teacher', payload: { ok: true } });
+    teacherSocket.receive({ type: 'buzzerResults.teacherProgress', payload: { questions: [{
+      questionId: 'G',
+      groups: [{ groupId: 'A', submitted: true, answerText: null, answers: [
+        { placeholderNumber: 1, answerText: 'A1' },
+        { placeholderNumber: 2, answerText: 'A2' },
+      ] }],
+      winningGroupId: 'A',
+      winningAnswer: null,
+      winningAnswers: [
+        { placeholderNumber: 1, answerText: 'A1' },
+        { placeholderNumber: 2, answerText: 'A2' },
+      ],
+    }] } });
+    expect(teacher.buzzerResults.getSnapshot().teacherProgress?.questions[0]?.winningAnswers).toEqual([
+      { placeholderNumber: 1, answerText: 'A1' },
+      { placeholderNumber: 2, answerText: 'A2' },
+    ]);
+
+    const studentSocket = new FakeWebSocket();
+    const student = new RealtimeClient({
+      studentSelection: createInMemoryStudentSelection(),
+      location: { protocol: 'http:', host: 'localhost' },
+      createSocket: () => studentSocket as unknown as WebSocket,
+    });
+    student.connect();
+    studentSocket.open();
+    studentSocket.receive({ type: 'student.joined', requestId: 'joined', payload: { ok: true, groupId: 'A' } });
+    studentSocket.receive({ type: 'buzzerResults.questionList', payload: {
+      questionIds: ['G'], questionLayouts: [{ questionId: 'G', kind: 'GROUP', answerCount: 2 }],
+    } });
+    studentSocket.receive({ type: 'buzzerResults.ownProgress', payload: { questions: [{
+      questionId: 'G', submitted: true, answerText: null, locked: true, answers: [
+        { placeholderNumber: 1, answerText: 'A1' },
+        { placeholderNumber: 2, answerText: 'A2' },
+      ],
+    }] } });
+    expect(student.buzzerResults.getSnapshot().ownProgress[0]?.answers).toEqual([
+      { placeholderNumber: 1, answerText: 'A1' },
+      { placeholderNumber: 2, answerText: 'A2' },
+    ]);
+    studentSocket.receive({ type: 'buzzerResults.studentResults', requestId: 'results', payload: { questions: [{
+      questionId: 'G',
+      winningGroupId: 'A',
+      winningAnswer: null,
+      winningAnswers: [
+        { placeholderNumber: 1, answerText: 'A1' },
+        { placeholderNumber: 2, answerText: 'A2' },
+      ],
+      ownAnswer: null,
+      ownAnswers: [
+        { placeholderNumber: 1, answerText: 'A1' },
+        { placeholderNumber: 2, answerText: 'A2' },
+      ],
+      ownStatus: 'SUBMITTED',
+      ownGroupWon: true,
+    }] } });
+    expect(student.buzzerResults.getSnapshot().studentResults?.questions[0]?.ownAnswers).toEqual([
+      { placeholderNumber: 1, answerText: 'A1' },
+      { placeholderNumber: 2, answerText: 'A2' },
+    ]);
   });
 });

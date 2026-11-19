@@ -1,0 +1,46 @@
+@startuml
+title 004 題組匯入 - 時序圖
+actor "老師" as Teacher
+participant "課堂介面" as UI
+participant "RealtimeHub" as Hub
+participant "GuidedNotesService" as Notes
+participant "WorksheetParser" as Parser
+participant "Google Sheets Adapter" as Sheets
+participant "ActivityState" as Activity
+
+Teacher -> UI : 選擇學習單及工作表
+UI -> Hub : 匯入請求
+Hub -> Hub : 驗證老師身分及準備階段
+alt 未授權或階段錯誤
+  Hub --> UI : 拒絕並說明原因
+else 可匯入
+  Hub -> Notes : 讀取並匯入
+  Notes -> Sheets : 讀取所選工作表與列／欄 metadata
+  Sheets --> Notes : 工作表內容與 developer metadata
+  Notes -> Notes : 搜尋 PROJECT key=sb004 並比對所選工作表列／欄
+  alt 已有 sb004 匯出錨點
+    Notes --> Hub : 拒絕重用已匯出工作表
+    Hub --> UI : 提示使用原始或未匯出學習單；活動維持原狀
+  else 沒有 sb004 錨點
+    Notes -> Parser : 辨識標題、題號與佔位符
+    Parser -> Parser : 驗證主題唯一性及 2 至 20 個連續子題
+    alt 結構無效
+      Parser --> Notes : 題號、列號及錯誤原因
+      Notes --> Hub : 匯入失敗
+      Hub --> UI : 顯示修正方向；活動維持原狀
+    else 結構有效
+      Parser --> Notes : 有序題目與答案欄位映射
+      Notes -> Notes : 驗證各組最短完整提交不超過 16 KiB
+      alt 最短提交超限
+        Notes --> Hub : 拒絕並指出題號、來源列及修正方向
+        Hub --> UI : 顯示錯誤，活動維持原狀
+      else 可提交
+        Notes -> Activity : 再檢查階段並原子更新學習單及題型
+        Activity --> Notes : 更新完成
+        Notes --> Hub : 匯入成功與題目摘要
+        Hub --> UI : 顯示主題數及各題組子題數
+      end
+    end
+  end
+end
+@enduml

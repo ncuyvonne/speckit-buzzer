@@ -1,0 +1,32 @@
+@startuml
+title 004 題組作答 - 時序圖
+actor "學生" as Student
+participant "課堂介面" as UI
+participant "WebSocket Client" as Client
+participant "RealtimeHub" as Hub
+participant "BuzzerResultsService" as Answers
+participant "ActivityState" as Activity
+
+Student -> UI : 填妥所有子題並一次送出
+UI -> Client : 題號與完整答案組
+Client -> Client : 序列化一次並計算 UTF-8 位元組
+alt 超過 16 KiB
+  Client --> UI : 保留填答並提示縮短
+else 16 KiB 以內
+  Client -> Hub : 送出已量測的同一份資料
+  Hub -> Hub : 傳輸上限與身分／階段檢查
+  Hub -> Answers : 驗證題型及完整性
+  Answers -> Activity : 讀取題組結構與活動階段
+  alt 缺漏、空白、未知題目或已鎖定
+    Answers --> Hub : 拒絕並說明原因
+    Hub --> Client : 錯誤與修正方向
+    Client --> UI : 保留已填答案
+  else 完整且有效
+    Answers -> Answers : 同步記錄完整答案、接收時間與順位
+    Answers --> Hub : 完整提交結果
+    Hub --> Client : 本組答案及鎖定狀態
+    Client --> UI : 同步本組答案
+    Hub --> Student : 更新本組在線成員
+  end
+end
+@enduml

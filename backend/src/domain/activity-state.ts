@@ -1,4 +1,4 @@
-import type { Question, WorksheetReference } from '../guided-notes/types.js';
+import type { ExportAnchorState, ExportManifest, Question, WorksheetReference } from '../guided-notes/types.js';
 
 export const ACTIVITY_STAGES = ['PREPARING', 'BUZZING', 'ENDED'] as const;
 export type ActivityStage = (typeof ACTIVITY_STAGES)[number];
@@ -19,6 +19,7 @@ export class ActivityState {
   #stage: ActivityStage = 'PREPARING';
   #worksheet: WorksheetReference | null = null;
   #questions: readonly Question[] = Object.freeze([]);
+  #exportAnchorState: ExportAnchorState = Object.freeze({ status: 'NONE' });
 
   get stage(): ActivityStage {
     return this.#stage;
@@ -30,6 +31,36 @@ export class ActivityState {
 
   get questions(): readonly Question[] {
     return this.#questions;
+  }
+
+  get exportAnchorState(): ExportAnchorState {
+    return this.#exportAnchorState;
+  }
+
+  setExportAnchorState(state: ExportAnchorState): void {
+    if (state.status !== 'NONE') {
+      if (this.#worksheet === null || state.manifest.worksheet.sheetId !== this.#worksheet.sheetId
+        || state.manifest.worksheet.spreadsheetId !== this.#worksheet.spreadsheetId) {
+        throw new TypeError('Export anchor state does not match the active worksheet.');
+      }
+    }
+    if (state.status === 'NONE') {
+      this.#exportAnchorState = Object.freeze({ status: 'NONE' });
+      return;
+    }
+    const freezeManifest = (manifest: ExportManifest) => Object.freeze({
+      ...manifest,
+      worksheet: Object.freeze({ ...manifest.worksheet }),
+      header: Object.freeze({ ...manifest.header }),
+      targets: Object.freeze(manifest.targets.map((target) => Object.freeze({ ...target }))),
+      anchors: Object.freeze(manifest.anchors.map((anchor) => Object.freeze({ ...anchor }))),
+    });
+    this.#exportAnchorState = state.status === 'PREPARED'
+      ? Object.freeze({
+        status: 'PREPARED',
+        manifest: freezeManifest(state.manifest),
+      })
+      : Object.freeze({ status: 'CONFIRMED', manifest: freezeManifest(state.manifest) });
   }
 
   get questionCount(): number {
@@ -61,11 +92,30 @@ export class ActivityState {
       ) {
         throw new TypeError('Guided Notes import state is invalid.');
       }
+      if (question.kind === 'SINGLE' && (
+        question.answerSlots.length !== 1
+        || question.answerSlots[0]?.placeholderNumber !== 1
+        || question.answerSlots[0]?.sourceRowAtImport !== question.sourceRowAtImport
+      )) {
+        throw new TypeError('Guided Notes import state is invalid.');
+      }
+      if (question.kind === 'GROUP' && (
+        question.answerSlots.length < 2
+        || question.answerSlots.length > 20
+        || question.answerSlots.some((slot, slotIndex) => (
+          slot.placeholderNumber !== slotIndex + 1
+          || !Number.isInteger(slot.sourceRowAtImport)
+          || slot.sourceRowAtImport !== question.sourceRowAtImport + slotIndex
+        ))
+      )) {
+        throw new TypeError('Guided Notes import state is invalid.');
+      }
       seen.add(question.questionId);
     }
 
     this.#worksheet = Object.freeze({ ...worksheet });
     this.#questions = Object.freeze(questions.map((question) => Object.freeze({ ...question })));
+    this.#exportAnchorState = Object.freeze({ status: 'NONE' });
     return true;
   }
 
