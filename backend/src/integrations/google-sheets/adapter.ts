@@ -1,12 +1,13 @@
 import { google, type sheets_v4 } from 'googleapis';
 import type { GoogleServiceAccountCredentials } from '../../config.js';
-import type { WorksheetReference } from '../../guided-notes/types.js';
+import type { ExportDimensionAnchor, WorksheetReference } from '../../guided-notes/types.js';
 import {
   GoogleSheetsIntegrationError,
   normalizeGoogleSheetsError,
 } from './errors.js';
 import type {
   AnswerCellWrite,
+  DeveloperMetadataRecord,
   GoogleSheetsAdapter,
   ResolvedWorksheet,
   WorksheetGrid,
@@ -30,10 +31,14 @@ function quoteSheetTitle(title: string): string {
   return `'${title.replace(/'/g, "''")}'`;
 }
 
-function asDisplayedRows(values: unknown[][] | null | undefined): string[][] {
-  return (values ?? []).map((row) => (row ?? []).map((cell) => (
-    cell === null || cell === undefined ? '' : String(cell)
-  )));
+function rawEnteredValueKey(value: sheets_v4.Schema$ExtendedValue | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const raw: Record<string, string | number | boolean> = {};
+  if (value.stringValue !== null && value.stringValue !== undefined) raw.stringValue = value.stringValue;
+  if (value.numberValue !== null && value.numberValue !== undefined) raw.numberValue = value.numberValue;
+  if (value.boolValue !== null && value.boolValue !== undefined) raw.boolValue = value.boolValue;
+  if (value.formulaValue !== null && value.formulaValue !== undefined) raw.formulaValue = value.formulaValue;
+  return Object.keys(raw).length === 0 ? null : JSON.stringify(raw);
 }
 
 class GoogleSheetsApiAdapter implements GoogleSheetsAdapter {
@@ -87,19 +92,80 @@ class GoogleSheetsApiAdapter implements GoogleSheetsAdapter {
     }
   }
 
+  async searchDeveloperMetadata(
+    spreadsheetId: string,
+    metadataKey: string,
+    visibility: 'PROJECT',
+  ): Promise<readonly DeveloperMetadataRecord[]> {
+    const sheets = this.#requireSheets();
+    try {
+      const response = await sheets.spreadsheets.developerMetadata.search({
+        spreadsheetId,
+        requestBody: {
+          dataFilters: [{ developerMetadataLookup: { metadataKey, visibility } }],
+        },
+      });
+      return (response.data.matchedDeveloperMetadata ?? []).flatMap(({ developerMetadata }) => {
+        const metadata = developerMetadata;
+        const location = metadata?.location;
+        if (!metadata?.metadataKey || !metadata.visibility || !location?.locationType) return [];
+        const dimensionRange = location.dimensionRange;
+        const sheetId = dimensionRange?.sheetId ?? location.sheetId ?? undefined;
+        const rangeDimension = dimensionRange?.dimension === 'ROWS'
+          ? 'ROW'
+          : dimensionRange?.dimension === 'COLUMNS'
+            ? 'COLUMN'
+            : undefined;
+        const dimension = rangeDimension
+          ?? (location.locationType === 'ROW' || location.locationType === 'COLUMN' ? location.locationType : undefined);
+        const coordinate = dimensionRange?.startIndex === undefined || dimensionRange.startIndex === null
+          ? undefined
+          : dimensionRange.startIndex + 1;
+        const endCoordinate = dimensionRange?.endIndex === undefined || dimensionRange.endIndex === null
+          ? undefined
+          : dimensionRange.endIndex + 1;
+        return [{
+          ...(metadata.metadataId === null || metadata.metadataId === undefined ? {} : { metadataId: metadata.metadataId }),
+          metadataKey: metadata.metadataKey,
+          ...(metadata.metadataValue === null || metadata.metadataValue === undefined
+            ? {}
+            : { metadataValue: metadata.metadataValue }),
+          visibility: metadata.visibility,
+          locationType: location.locationType,
+          ...(sheetId === null || sheetId === undefined ? {} : { sheetId }),
+          ...(dimension === undefined ? {} : { dimension }),
+          ...(coordinate === undefined ? {} : { coordinate }),
+          ...(endCoordinate === undefined ? {} : { endCoordinate }),
+        }];
+      });
+    } catch (error) {
+      throw normalizeGoogleSheetsError(error, 'READ');
+    }
+  }
+
   async readWorksheet(resolved: ResolvedWorksheet): Promise<WorksheetGrid> {
     const sheets = this.#requireSheets();
     try {
       const range = `${quoteSheetTitle(resolved.worksheet.worksheetTitle)}!A1:${columnToLetters(resolved.columnCount)}${resolved.rowCount}`;
-      const response = await sheets.spreadsheets.values.get({
+      const response = await sheets.spreadsheets.get({
         spreadsheetId: resolved.worksheet.spreadsheetId,
-        range,
-        majorDimension: 'ROWS',
-        valueRenderOption: 'FORMATTED_VALUE',
+        ranges: [range],
+        includeGridData: true,
+        fields: 'sheets(properties(sheetId),data(rowData(values(formattedValue,userEnteredValue))))',
       });
+      const sheet = response.data.sheets?.find((item) => item.properties?.sheetId === resolved.worksheet.sheetId);
+      const rows = sheet?.data?.[0]?.rowData ?? [];
+      if (sheet === undefined) throw new GoogleSheetsIntegrationError('SHEET_NOT_FOUND');
       return {
         ...resolved,
-        values: asDisplayedRows(response.data.values),
+        values: Array.from({ length: resolved.rowCount }, (_, rowIndex) => Array.from(
+          { length: resolved.columnCount },
+          (_unused, columnIndex) => rows[rowIndex]?.values?.[columnIndex]?.formattedValue ?? '',
+        )),
+        rawValues: Array.from({ length: resolved.rowCount }, (_, rowIndex) => Array.from(
+          { length: resolved.columnCount },
+          (_unused, columnIndex) => rawEnteredValueKey(rows[rowIndex]?.values?.[columnIndex]?.userEnteredValue),
+        )),
       };
     } catch (error) {
       throw normalizeGoogleSheetsError(error, 'READ');
@@ -134,6 +200,87 @@ class GoogleSheetsApiAdapter implements GoogleSheetsAdapter {
       await sheets.spreadsheets.values.batchUpdate({
         spreadsheetId: resolved.worksheet.spreadsheetId,
         requestBody: { valueInputOption: 'RAW', data },
+      });
+    } catch (error) {
+      throw normalizeGoogleSheetsError(error, 'WRITE');
+    }
+  }
+
+  async batchExport(
+    resolved: ResolvedWorksheet,
+    writes: readonly AnswerCellWrite[],
+    anchors: readonly ExportDimensionAnchor[],
+  ): Promise<void> {
+    const sheets = this.#requireSheets();
+    const seenCells = new Set<string>();
+    const seenMetadataIds = new Set<number>();
+    const requests: sheets_v4.Schema$Request[] = [];
+    for (const write of writes) {
+      if (!Number.isInteger(write.rowNumber)
+        || write.rowNumber < 1
+        || write.rowNumber > resolved.rowCount
+        || !Number.isInteger(write.answerColumnNumber)
+        || write.answerColumnNumber < 1
+        || write.answerColumnNumber > resolved.columnCount
+        || typeof write.value !== 'string') {
+        throw new GoogleSheetsIntegrationError('SHEET_WRITE_FAILED', { writeOutcome: 'DEFINITELY_NOT_APPLIED' });
+      }
+      const key = `${write.rowNumber}:${write.answerColumnNumber}`;
+      if (seenCells.has(key)) {
+        throw new GoogleSheetsIntegrationError('SHEET_WRITE_FAILED', { writeOutcome: 'DEFINITELY_NOT_APPLIED' });
+      }
+      seenCells.add(key);
+      requests.push({
+        updateCells: {
+          range: {
+            sheetId: resolved.worksheet.sheetId,
+            startRowIndex: write.rowNumber - 1,
+            endRowIndex: write.rowNumber,
+            startColumnIndex: write.answerColumnNumber - 1,
+            endColumnIndex: write.answerColumnNumber,
+          },
+          rows: [{ values: [write.value === '' ? {} : { userEnteredValue: { stringValue: write.value } }] }],
+          fields: 'userEnteredValue',
+        },
+      });
+    }
+    for (const anchor of anchors) {
+      const maxCoordinate = anchor.dimension === 'ROW' ? resolved.rowCount : resolved.columnCount;
+      if (anchor.sheetId !== resolved.worksheet.sheetId
+        || !Number.isSafeInteger(anchor.metadataId)
+        || anchor.metadataId <= 0
+        || seenMetadataIds.has(anchor.metadataId)
+        || !/^[A-Za-z0-9_-]+$/.test(anchor.attemptToken)
+        || !Number.isInteger(anchor.coordinate)
+        || anchor.coordinate < 1
+        || anchor.coordinate > maxCoordinate) {
+        throw new GoogleSheetsIntegrationError('SHEET_WRITE_FAILED', { writeOutcome: 'DEFINITELY_NOT_APPLIED' });
+      }
+      seenMetadataIds.add(anchor.metadataId);
+      requests.push({
+        createDeveloperMetadata: {
+          developerMetadata: {
+            metadataId: anchor.metadataId,
+            metadataKey: 'sb004',
+            metadataValue: `v1:${anchor.attemptToken}:${anchor.dimension}:${anchor.sheetId}:${anchor.coordinate}`,
+            visibility: 'PROJECT',
+            location: {
+              dimensionRange: {
+                sheetId: anchor.sheetId,
+                dimension: anchor.dimension === 'ROW' ? 'ROWS' : 'COLUMNS',
+                startIndex: anchor.coordinate - 1,
+                endIndex: anchor.coordinate,
+              },
+            },
+          },
+        },
+      });
+    }
+    if (requests.length === 0) return;
+    try {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: resolved.worksheet.spreadsheetId,
+        requestBody: { requests },
       });
     } catch (error) {
       throw normalizeGoogleSheetsError(error, 'WRITE');

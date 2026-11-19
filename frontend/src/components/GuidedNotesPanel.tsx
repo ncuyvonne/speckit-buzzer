@@ -1,11 +1,17 @@
 import { useState, type FormEvent } from 'react';
-import { guidedNotesRecoveryMessage, type ActivityStage, type GuidedNotesErrorCode } from '../realtime/messages';
+import {
+  guidedNotesRecoveryMessage,
+  type ActivityStage,
+  type GuidedNotesErrorCode,
+  type QuestionLayoutSummary,
+} from '../realtime/messages';
 
 export interface GuidedNotesPanelProps {
   readonly stage: ActivityStage | null;
   readonly connected: boolean;
   readonly worksheetTitle: string | null;
   readonly questionIds: readonly string[];
+  readonly questionLayouts: readonly QuestionLayoutSummary[];
   readonly questionCount: number;
   readonly busy: boolean;
   readonly error: { readonly code: GuidedNotesErrorCode; readonly message: string } | null;
@@ -19,6 +25,7 @@ export function GuidedNotesPanel({
   connected,
   worksheetTitle,
   questionIds,
+  questionLayouts,
   questionCount,
   busy,
   error,
@@ -87,7 +94,16 @@ export function GuidedNotesPanel({
       <p>工作表：{worksheetTitle ?? '尚未匯入'}</p>
       <p>題數：{questionCount}</p>
       <ol aria-label="已匯入題號">
-        {questionIds.map((questionId, index) => <li key={`${index}-${questionId}`}>{questionId}</li>)}
+        {questionIds.map((questionId, index) => {
+          const layout = questionLayouts[index];
+          const kind = layout?.kind === 'GROUP' ? '題組' : '單題';
+          const answerCount = layout?.answerCount ?? 1;
+          return (
+            <li key={`${index}-${questionId}`}>
+              {questionId}（{kind}，{answerCount} 個填空）
+            </li>
+          );
+        })}
       </ol>
     </section>
   );

@@ -1,25 +1,43 @@
 import type { ActivityState } from './activity-state.js';
 import type { GroupRoster } from './group-roster.js';
+import type { SubAnswer } from '../guided-notes/types.js';
 
-export interface GroupSubmission {
+export interface AcceptedSubmissionFields {
   readonly groupId: string;
   readonly questionId: string;
-  readonly answerText: string;
   readonly receivedOrder: number;
   readonly acceptedAt: number;
   readonly locked: boolean;
 }
+
+export interface SingleAnswerSubmission extends AcceptedSubmissionFields {
+  readonly kind?: 'SINGLE';
+  readonly answerText: string;
+}
+
+export interface GroupAnswerSubmission extends AcceptedSubmissionFields {
+  readonly kind: 'GROUP';
+  readonly answers: readonly SubAnswer[];
+  readonly answerText?: never;
+}
+
+export type AcceptedAnswerSubmission = SingleAnswerSubmission | GroupAnswerSubmission;
+
+/** Legacy name retained for existing single-answer service callers. */
+export type GroupSubmission = AcceptedAnswerSubmission;
 
 export type BuzzerResultsErrorCode =
   | 'STAGE_CONFLICT'
   | 'GROUP_INVALID'
   | 'QUESTION_INVALID'
   | 'ANSWER_EMPTY'
-  | 'ANSWER_LOCKED';
+  | 'ANSWER_LOCKED'
+  | 'GROUP_ANSWER_INCOMPLETE'
+  | 'GROUP_ANSWER_INVALID';
 
 export type SubmitAnswerResult =
-  | { readonly accepted: true; readonly submission: GroupSubmission }
-  | { readonly accepted: false; readonly code: BuzzerResultsErrorCode };
+  | { readonly accepted: true; readonly submission: AcceptedAnswerSubmission }
+  | { readonly accepted: false; readonly code: BuzzerResultsErrorCode; readonly message?: string };
 
 export interface TeacherQuestionProgress {
   readonly questionId: string;
@@ -27,9 +45,11 @@ export interface TeacherQuestionProgress {
     readonly groupId: string;
     readonly submitted: boolean;
     readonly answerText: string | null;
+    readonly answers?: readonly SubAnswer[] | null;
   }[];
   readonly winningGroupId: string | null;
   readonly winningAnswer: string | null;
+  readonly winningAnswers?: readonly SubAnswer[] | null;
 }
 
 export interface TeacherProgress {
@@ -41,6 +61,8 @@ export interface StudentQuestionResult {
   readonly winningGroupId: string | null;
   readonly winningAnswer: string | null;
   readonly ownAnswer: string | null;
+  readonly ownAnswers?: readonly SubAnswer[] | null;
+  readonly winningAnswers?: readonly SubAnswer[] | null;
   readonly ownStatus: 'SUBMITTED' | 'NOT_SUBMITTED';
   readonly ownGroupWon: boolean;
 }
@@ -54,6 +76,7 @@ export interface StudentOwnProgress {
     readonly questionId: string;
     readonly submitted: boolean;
     readonly answerText: string | null;
+    readonly answers?: readonly SubAnswer[] | null;
     readonly locked: boolean;
   }[];
 }
@@ -80,8 +103,8 @@ export class BuzzerResultsService {
   readonly #activity: ActivityState;
   readonly #roster: GroupRoster;
   readonly #now: () => number;
-  readonly #submissions = new Map<string, GroupSubmission>();
-  readonly #winners = new Map<string, GroupSubmission>();
+  readonly #submissions = new Map<string, AcceptedAnswerSubmission>();
+  readonly #winners = new Map<string, AcceptedAnswerSubmission>();
   #nextReceivedOrder = 1;
 
   constructor(options: BuzzerResultsServiceOptions) {
@@ -94,38 +117,95 @@ export class BuzzerResultsService {
    * The validation, unique-key check, insert, and winner assignment are kept
    * synchronous. The insert is the linearization point for concurrent sockets.
    */
-  submitAnswer(groupId: string, questionId: string, answerText: string): SubmitAnswerResult {
+  submitAnswer(groupId: string, questionId: string, answer: string | readonly SubAnswer[]): SubmitAnswerResult {
     if (this.#activity.stage !== 'BUZZING') return { accepted: false, code: 'STAGE_CONFLICT' };
     if (!this.#roster.has(groupId)) return { accepted: false, code: 'GROUP_INVALID' };
-    if (!this.#activity.questions.some((question) => question.questionId === questionId)) {
+    const question = this.#activity.questions.find((item) => item.questionId === questionId);
+    if (!question) {
       return { accepted: false, code: 'QUESTION_INVALID' };
     }
-    // ECMAScript trim() omits some Unicode White_Space characters (notably
-    // U+0085 NEL), so test for any code point outside the Unicode property.
-    if (!/\P{White_Space}/u.test(answerText)) return { accepted: false, code: 'ANSWER_EMPTY' };
+
+    let submissionFields: Pick<AcceptedAnswerSubmission, 'kind'> & Partial<AcceptedAnswerSubmission>;
+    if (question.kind === 'GROUP') {
+      if (typeof answer === 'string') {
+        return { accepted: false, code: 'GROUP_ANSWER_INVALID', message: '此題需要完整的子題答案清單，請重新填寫。' };
+      }
+      const expectedCount = question.answerSlots.length;
+      if (answer.length < expectedCount) {
+        const present = new Set(answer.map((item) => item.placeholderNumber));
+        const missing = question.answerSlots
+          .filter((slot) => !present.has(slot.placeholderNumber))
+          .map((slot) => slot.placeholderNumber);
+        return {
+          accepted: false,
+          code: 'GROUP_ANSWER_INCOMPLETE',
+          message: `題組「${questionId}」尚未填完${missing.length > 0 ? `，請補上第 ${missing.join('、')} 格答案` : ''}後再送出。`,
+        };
+      }
+      const seen = new Set<number>();
+      for (const item of answer) {
+        if (!Number.isSafeInteger(item.placeholderNumber)
+          || item.placeholderNumber < 1
+          || item.placeholderNumber > expectedCount
+          || seen.has(item.placeholderNumber)) {
+          return {
+            accepted: false,
+            code: 'GROUP_ANSWER_INVALID',
+            message: `題組「${questionId}」的子題編號必須各出現一次並依 1 到 ${expectedCount} 排列。`,
+          };
+        }
+        seen.add(item.placeholderNumber);
+        // ECMAScript trim() omits some Unicode White_Space characters (notably U+0085 NEL).
+        if (!/\P{White_Space}/u.test(item.answerText)) {
+          return {
+            accepted: false,
+            code: 'GROUP_ANSWER_INCOMPLETE',
+            message: `題組「${questionId}」第 ${item.placeholderNumber} 格尚未填寫，請補上答案後再送出。`,
+          };
+        }
+      }
+      if (answer.length > expectedCount || answer.some((item, index) => item.placeholderNumber !== index + 1)) {
+        return {
+          accepted: false,
+          code: 'GROUP_ANSWER_INVALID',
+          message: `題組「${questionId}」的子題編號必須依 1 到 ${expectedCount} 排列，請檢查各格答案。`,
+        };
+      }
+      submissionFields = {
+        kind: 'GROUP',
+        answers: Object.freeze(answer.map((item) => Object.freeze({ ...item }))),
+      } as Pick<AcceptedAnswerSubmission, 'kind'> & Partial<AcceptedAnswerSubmission>;
+    } else {
+      if (typeof answer !== 'string') {
+        return { accepted: false, code: 'GROUP_ANSWER_INVALID', message: '此題只接受一格答案，請重新送出。' };
+      }
+      // ECMAScript trim() omits some Unicode White_Space characters (notably U+0085 NEL).
+      if (!/\P{White_Space}/u.test(answer)) return { accepted: false, code: 'ANSWER_EMPTY' };
+      submissionFields = { kind: 'SINGLE', answerText: answer } as Pick<AcceptedAnswerSubmission, 'kind'> & Partial<AcceptedAnswerSubmission>;
+    }
 
     const key = submissionKey(groupId, questionId);
     if (this.#submissions.has(key)) return { accepted: false, code: 'ANSWER_LOCKED' };
 
-    const submission: GroupSubmission = Object.freeze({
+    const base = {
       groupId,
       questionId,
-      answerText,
       receivedOrder: this.#nextReceivedOrder,
       acceptedAt: this.#now(),
       locked: true,
-    });
+    };
+    const submission = Object.freeze({ ...base, ...submissionFields }) as AcceptedAnswerSubmission;
     this.#nextReceivedOrder += 1;
     this.#submissions.set(key, submission);
     if (!this.#winners.has(questionId)) this.#winners.set(questionId, submission);
     return { accepted: true, submission };
   }
 
-  getSubmission(groupId: string, questionId: string): GroupSubmission | null {
+  getSubmission(groupId: string, questionId: string): AcceptedAnswerSubmission | null {
     return this.#submissions.get(submissionKey(groupId, questionId)) ?? null;
   }
 
-  getWinner(questionId: string): GroupSubmission | null {
+  getWinner(questionId: string): AcceptedAnswerSubmission | null {
     return this.#winners.get(questionId) ?? null;
   }
 
@@ -140,11 +220,15 @@ export class BuzzerResultsService {
             return {
               groupId,
               submitted: submission !== null,
-              answerText: submission?.answerText ?? null,
+              answerText: question.kind !== 'GROUP' && submission?.kind !== 'GROUP' ? submission?.answerText ?? null : null,
+              ...(question.kind === 'GROUP'
+                ? { answers: submission?.kind === 'GROUP' ? submission.answers : null }
+                : {}),
             };
           }),
           winningGroupId: winner?.groupId ?? null,
-          winningAnswer: winner?.answerText ?? null,
+          winningAnswer: winner && winner.kind !== 'GROUP' ? winner.answerText : null,
+          ...(question.kind === 'GROUP' ? { winningAnswers: winner?.kind === 'GROUP' ? winner.answers : null } : {}),
         };
       }),
     };
@@ -158,7 +242,10 @@ export class BuzzerResultsService {
         return {
           questionId: question.questionId,
           submitted: submission !== null,
-          answerText: submission?.answerText ?? null,
+          answerText: question.kind !== 'GROUP' && submission?.kind !== 'GROUP' ? submission?.answerText ?? null : null,
+          ...(question.kind === 'GROUP'
+            ? { answers: submission?.kind === 'GROUP' ? submission.answers : null }
+            : {}),
           locked: submission?.locked ?? false,
         };
       }),
@@ -175,8 +262,16 @@ export class BuzzerResultsService {
         return {
           questionId: question.questionId,
           winningGroupId: winner?.groupId ?? null,
-          winningAnswer: winner?.answerText ?? null,
-          ownAnswer: ownSubmission?.answerText ?? null,
+          winningAnswer: winner && winner.kind !== 'GROUP' ? winner.answerText : null,
+          ...(question.kind === 'GROUP'
+            ? { winningAnswers: winner?.kind === 'GROUP' ? winner.answers : null }
+            : {}),
+          ownAnswer: question.kind !== 'GROUP' && ownSubmission?.kind !== 'GROUP'
+            ? ownSubmission?.answerText ?? null
+            : null,
+          ...(question.kind === 'GROUP'
+            ? { ownAnswers: ownSubmission?.kind === 'GROUP' ? ownSubmission.answers : null }
+            : {}),
           ownStatus: ownSubmission ? 'SUBMITTED' : 'NOT_SUBMITTED',
           ownGroupWon: winner?.groupId === groupId,
         };

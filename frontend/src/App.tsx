@@ -53,6 +53,7 @@ export default function App() {
           connected={state.connection === 'connected'}
           worksheetTitle={state.worksheetTitle}
           questionIds={state.questionIds}
+          questionLayouts={state.questionLayouts}
           questionCount={state.questionCount}
           busy={state.guidedNotesBusy}
           error={state.guidedNotesError}
@@ -67,7 +68,8 @@ export default function App() {
           stage={state.stage}
           connected={state.connection === 'connected'}
           state={buzzerState}
-          onSubmit={(questionId, answerText) => client.submitAnswer(questionId, answerText)}
+          questionLayouts={state.questionLayouts}
+          onSubmit={(questionId, answer) => client.submitAnswer(questionId, answer)}
           onClearError={() => client.buzzerResults.clearError()}
         />
       )}

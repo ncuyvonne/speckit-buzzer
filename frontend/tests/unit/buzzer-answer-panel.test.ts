@@ -10,6 +10,7 @@ function renderPanel(state: BuzzerResultsViewState): string {
     stage: 'BUZZING',
     connected: true,
     state,
+    questionLayouts: [],
     onSubmit: () => undefined,
     onClearError: () => undefined,
   }));

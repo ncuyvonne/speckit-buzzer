@@ -17,14 +17,15 @@ export class BuzzerWinningResultsProvider implements WinningResultsProvider {
     if (this.#activity.stage !== 'ENDED' || this.#activity.questions.length === 0) {
       return { status: 'UNAVAILABLE', reason: 'NOT_READY' };
     }
-    const answers = this.#activity.questions.flatMap((question) => {
+    const winners = this.#activity.questions.flatMap((question) => {
       const winner = this.#results.getWinner(question.questionId);
-      return winner === null ? [] : [{
+      return winner === null ? [] : [winner];
+    }).sort((left, right) => left.receivedOrder - right.receivedOrder);
+    const answers = winners.map((winner) => ({
         questionId: winner.questionId,
         groupId: winner.groupId,
-        answerText: winner.answerText,
-      }];
-    });
+        ...(winner.kind === 'GROUP' ? { answers: winner.answers } : { answerText: winner.answerText }),
+      }));
     return { status: 'READY', answers };
   }
 }

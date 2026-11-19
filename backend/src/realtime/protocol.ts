@@ -1,5 +1,6 @@
 import { MAX_MESSAGE_BYTES } from '../config.js';
 import type { ActivityStage } from '../domain/activity-state.js';
+import type { SubmitAnswerPayload } from '../guided-notes/types.js';
 
 export type ErrorCode =
   | 'INVALID_MESSAGE'
@@ -14,6 +15,7 @@ export type ErrorCode =
   | 'SHEET_NOT_FOUND'
   | 'SHEET_LAYOUT_INVALID'
   | 'QUESTION_IDS_INVALID'
+  | 'WORKSHEET_ALREADY_EXPORTED'
   | 'SHEET_READ_FAILED'
   | 'WORKSHEET_NOT_IMPORTED'
   | 'WINNING_RESULTS_UNAVAILABLE'
@@ -21,13 +23,15 @@ export type ErrorCode =
   | 'QUESTION_INVALID'
   | 'ANSWER_EMPTY'
   | 'ANSWER_LOCKED'
+  | 'GROUP_ANSWER_INCOMPLETE'
+  | 'GROUP_ANSWER_INVALID'
   | 'SHEET_WRITE_FAILED'
   | 'SHEET_WRITE_UNCONFIRMED';
 
 export type ClientMessage =
   | { type: 'teacher.authenticate'; requestId: string; payload: { password: string } }
   | { type: 'student.join'; requestId: string; payload: { groupId: string } }
-  | { type: 'buzzerResults.submitAnswer'; requestId: string; payload: { questionId: string; answerText: string } }
+  | { type: 'buzzerResults.submitAnswer'; requestId: string; payload: SubmitAnswerPayload }
   | { type: 'buzzerResults.getTeacherProgress'; requestId: string; payload: Record<string, never> }
   | { type: 'buzzerResults.getStudentResults'; requestId: string; payload: Record<string, never> }
   | { type: 'activity.advance'; requestId: string; payload: { from: ActivityStage; to: ActivityStage } }
@@ -58,6 +62,7 @@ const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   SHEET_NOT_FOUND: '找不到指定的試算表或工作表分頁，請檢查網址與分頁名稱。',
   SHEET_LAYOUT_INVALID: '找不到唯一的「題號」與「作答」標題列，請檢查欄位標題。',
   QUESTION_IDS_INVALID: '題號無效，請檢查空白、重複題號及 100 題上限。',
+  WORKSHEET_ALREADY_EXPORTED: '此工作表已由題組匯出；請選擇原始或未匯出的學習單再匯入。',
   SHEET_READ_FAILED: '目前無法讀取試算表，請檢查網路或存取權限後再試。',
   WORKSHEET_NOT_IMPORTED: '目前活動尚未匯入學習單，請先在準備階段匯入。',
   WINNING_RESULTS_UNAVAILABLE: '搶答結果尚未就緒，請稍後再試；目前不會寫入學習單。',
@@ -65,6 +70,8 @@ const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   QUESTION_INVALID: '此題目不屬於目前活動，請重新選擇題目。',
   ANSWER_EMPTY: '答案不可空白，請輸入答案後再送出。',
   ANSWER_LOCKED: '本組此題答案已送出並鎖定，無法再次修改。',
+  GROUP_ANSWER_INCOMPLETE: '題組尚未填完；請補齊所有子題答案後再送出。',
+  GROUP_ANSWER_INVALID: '題組答案編號與題目不符；請檢查各子題後再送出。',
   SHEET_WRITE_FAILED: '試算表拒絕寫入，資料未變更；請檢查編輯權限或受保護儲存格。',
   SHEET_WRITE_UNCONFIRMED: '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',
 };
@@ -123,19 +130,40 @@ export function decodeClientMessage(data: Buffer | ArrayBuffer | Buffer[], isBin
       if (typeof payload.groupId !== 'string') break;
       return { ok: true, message: { type: parsed.type, requestId, payload: { groupId: payload.groupId } } };
     case 'buzzerResults.submitAnswer':
-      if (
-        typeof payload.questionId !== 'string'
-        || typeof payload.answerText !== 'string'
-        || Object.keys(payload).some((key) => key !== 'questionId' && key !== 'answerText')
-      ) break;
-      return {
-        ok: true,
-        message: {
-          type: parsed.type,
-          requestId,
-          payload: { questionId: payload.questionId, answerText: payload.answerText },
-        },
-      };
+      if (typeof payload.questionId !== 'string') break;
+      if (typeof payload.answerText === 'string'
+        && Object.keys(payload).every((key) => key === 'questionId' || key === 'answerText')) {
+        return {
+          ok: true,
+          message: {
+            type: parsed.type,
+            requestId,
+            payload: { questionId: payload.questionId, answerText: payload.answerText },
+          },
+        };
+      }
+      if (Array.isArray(payload.subAnswers)
+        && Object.keys(payload).every((key) => key === 'questionId' || key === 'subAnswers')
+        && payload.subAnswers.every((answer) => isRecord(answer)
+          && Number.isSafeInteger(answer.placeholderNumber)
+          && typeof answer.answerText === 'string'
+          && Object.keys(answer).every((key) => key === 'placeholderNumber' || key === 'answerText'))) {
+        return {
+          ok: true,
+          message: {
+            type: parsed.type,
+            requestId,
+            payload: {
+              questionId: payload.questionId,
+              subAnswers: payload.subAnswers.map((answer) => ({
+                placeholderNumber: answer.placeholderNumber as number,
+                answerText: answer.answerText as string,
+              })),
+            },
+          },
+        };
+      }
+      break;
     case 'buzzerResults.getTeacherProgress':
     case 'buzzerResults.getStudentResults':
       if (Object.keys(payload).length !== 0) break;

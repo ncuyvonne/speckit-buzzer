@@ -1,0 +1,96 @@
+@startuml
+title 004 題組匯出 - 時序圖
+actor "老師" as Teacher
+participant "課堂介面" as UI
+participant "RealtimeHub" as Hub
+participant "GuidedNotesService" as Notes
+participant "BuzzerWinningResultsProvider" as Results
+participant "ActivityState" as Activity
+participant "WorksheetParser" as Parser
+participant "Google Sheets Adapter" as Sheets
+participant "Google Sheets" as Sheet
+
+Teacher -> UI : 確認匯出結果
+UI -> Hub : 匯出請求
+Hub -> Hub : 驗證老師身分及活動已結束
+Hub -> Notes : 匯出
+Notes -> Results : 取得完整答案結果
+alt 結果尚未就緒
+  Results --> Notes : UNAVAILABLE
+  Notes --> Hub : 拒絕；不得清空儲存格
+  Hub --> UI : 顯示結果尚未可用
+else 結果已就緒
+  Results --> Notes : 題號、成功組別及完整答案組
+  Notes -> Activity : 讀取匯入結構和首次匯出定位紀錄
+  Notes -> Sheets : 讀取目前工作表與既有列欄標記
+  Sheets -> Sheet : 讀取格值與識別資料
+  Sheets --> Notes : 工作表快照
+  alt 前一次首次匯出結果未確認（PREPARED）
+    Notes -> Notes : 比對錨點、原映射及預期目標值
+    alt 完整符合預期寫入
+      Notes -> Activity : PREPARED 升為 CONFIRMED
+      Notes --> Hub : 回報已套用；不再送出批次
+    else 已確定未套用且原佔位符可重新驗證
+      Notes -> Activity : 清除 PREPARED
+      Notes --> Hub : 回報未套用；下次請求重新驗證標記後可再次匯出
+    else 證據不完整或結果仍不確定
+      Notes -> Activity : 保留 PREPARED
+      Notes --> Hub : SHEET_WRITE_UNCONFIRMED；不再次寫入
+    end
+  else 前一次已確認後的重匯結果未確認
+    Notes -> Activity : 保持原 CONFIRMED manifest
+    Notes -> Notes : 保留重匯的預寫值與預期值
+    alt 讀回符合重匯預期值
+      Notes -> Activity : 更新 CONFIRMED manifest
+      Notes -> Notes : 清除待確認重匯
+      Notes --> Hub : 回報已套用；不再送出批次
+    else 讀回符合重匯前值
+      Notes -> Notes : 清除待確認重匯
+      Notes --> Hub : 回報未套用；下次請求可重試
+    else 證據仍不確定
+      Notes -> Notes : 保留待確認重匯
+      Notes --> Hub : SHEET_WRITE_UNCONFIRMED；不再次寫入
+    end
+  else 首次匯出或已確認後再次匯出
+    Notes -> Parser : 首次依現行佔位符定位，重匯核對原坐標與對應
+    alt 任一目標有變動或無法確認
+      Parser --> Notes : 目標格或對應驗證失敗
+      Notes --> Hub : 寫入前拒絕並提示檢查
+    else 目標均已確認
+      Parser --> Notes : 完整目標格及答案對應
+      opt 首次匯出
+        Notes -> Activity : 送出前保留原坐標、標記 ID 與預期格值
+      end
+      Notes -> Sheets : 提交單一原子批次
+      Sheets -> Sheet : 僅寫目標值，首次同批建立 PROJECT key=sb004 列欄標記
+      alt 批次確認成功
+        Sheets --> Notes : 已確認套用
+        Notes -> Activity : 將首次 manifest 標記為 CONFIRMED
+        Notes --> Hub : 匯出完成
+      else 確定拒絕或結果未確認
+        Sheets --> Notes : 拒絕或回應不確定
+        opt 結果不確定
+          Notes -> Sheets : 依 002 規則讀回原坐標、標記及寫入值
+          alt 完整符合預期寫入
+            Notes -> Activity : PREPARED 升為 CONFIRMED
+          else 已確定未套用
+            Notes -> Activity : 清除 PREPARED；下次請求重新驗證標記後可再次匯出
+          else 證據仍不確定
+            Notes -> Activity : 保留 PREPARED
+          end
+        end
+        Notes --> Hub : 依證據回報失敗、成功或未確認
+      end
+    end
+  end
+  Hub --> UI : 顯示結果與可採取的動作
+end
+
+note over Notes,Parser
+匯出以答案或空值取代佔位符。
+已匯出工作表供查看結果；其 key=sb004 錨點會阻止新活動匯入該表。
+建立新活動須用原始或未匯出的學習單。
+確認後重匯以錨點、原坐標與題目／子題映射驗證身分。
+目標格值變動本身不代表映射改變；重匯會覆寫已驗證的原目標格。
+end note
+@enduml

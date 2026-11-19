@@ -174,8 +174,12 @@ async function run() {
     restoreVerified = true;
   }
   if (exportError) throw exportError;
+  const totalTargetCellCount = activityQuestions.reduce(
+    (count, question) => count + (question.kind === 'GROUP' ? question.answerSlots.length : 1),
+    0,
+  );
   assert.equal(exportResult?.writtenCellCount, 1);
-  assert.equal(exportResult?.clearedCellCount, imported.questionCount - 1);
+  assert.equal(exportResult?.clearedCellCount, totalTargetCellCount - 1);
 
   return { importMs, exportMs, questionCount: imported.questionCount, grid: `${resolved.rowCount}x${resolved.columnCount}`, restoreVerified };
 }

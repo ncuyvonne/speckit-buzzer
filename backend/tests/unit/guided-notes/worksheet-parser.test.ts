@@ -23,8 +23,14 @@ describe('parseWorksheet', () => {
     });
     expect([...parsed.layout.questionRows]).toEqual([[' 01 ', 4], ['4', 6]]);
     expect(parsed.questions).toEqual([
-      { questionId: ' 01 ', displayOrder: 1, sourceRowAtImport: 4 },
-      { questionId: '4', displayOrder: 2, sourceRowAtImport: 6 },
+      {
+        questionId: ' 01 ', displayOrder: 1, sourceRowAtImport: 4, kind: 'SINGLE',
+        answerSlots: [{ placeholderNumber: 1, sourceRowAtImport: 4 }],
+      },
+      {
+        questionId: '4', displayOrder: 2, sourceRowAtImport: 6, kind: 'SINGLE',
+        answerSlots: [{ placeholderNumber: 1, sourceRowAtImport: 6 }],
+      },
     ]);
     expect(JSON.stringify(parsed.questions)).not.toContain('題目一');
   });
@@ -43,7 +49,10 @@ describe('parseWorksheet', () => {
       questionColumnNumber: 2,
     });
     expect(parsed.questions).toEqual([
-      { questionId: '1', displayOrder: 1, sourceRowAtImport: 4 },
+      {
+        questionId: '1', displayOrder: 1, sourceRowAtImport: 4, kind: 'SINGLE',
+        answerSlots: [{ placeholderNumber: 1, sourceRowAtImport: 4 }],
+      },
     ]);
   });
 
@@ -94,5 +103,120 @@ describe('parseWorksheet', () => {
 
     expect(parseWorksheet(hundred).questions).toHaveLength(100);
     expect(() => parseWorksheet(hundredAndOne)).toThrowError(expect.objectContaining({ code: 'QUESTION_IDS_INVALID' }));
+  });
+
+  it('parses mixed single and grouped questions with dynamic headers, child rows, and spacer rows', () => {
+    const parsed = parseWorksheet([
+      ['課程', ''],
+      [' 作答 ', ' 題號 ', '題目敘述'],
+      ['(1)', 'S-1', 'ASCII parentheses remain an ordinary single answer'],
+      ['（1）', 'G-2', ''],
+      ['（2）', '', ''],
+      ['', '', 'spacer'],
+      ['（1）', 'G-4', ''],
+      ['（2）', '', ''],
+      ['（3）', '', ''],
+      ['（4）', '', ''],
+    ]);
+
+    expect(parsed.questions).toMatchObject([
+      {
+        questionId: 'S-1', displayOrder: 1, kind: 'SINGLE',
+        answerSlots: [{ placeholderNumber: 1, sourceRowAtImport: 3 }],
+      },
+      {
+        questionId: 'G-2', displayOrder: 2, kind: 'GROUP',
+        answerSlots: [
+          { placeholderNumber: 1, sourceRowAtImport: 4 },
+          { placeholderNumber: 2, sourceRowAtImport: 5 },
+        ],
+      },
+      {
+        questionId: 'G-4', displayOrder: 3, kind: 'GROUP',
+        answerSlots: [
+          { placeholderNumber: 1, sourceRowAtImport: 7 },
+          { placeholderNumber: 2, sourceRowAtImport: 8 },
+          { placeholderNumber: 3, sourceRowAtImport: 9 },
+          { placeholderNumber: 4, sourceRowAtImport: 10 },
+        ],
+      },
+    ]);
+    expect([...parsed.layout.slotRows]).toEqual([
+      ['S-1', [3]],
+      ['G-2', [4, 5]],
+      ['G-4', [7, 8, 9, 10]],
+    ]);
+    expect(parsed.questions).toHaveLength(3);
+  });
+
+  it('rejects one-slot, missing, repeated, reversed, orphaned, and non-contiguous groups with question and row guidance', () => {
+    const invalidLayouts = [
+      {
+        name: 'one marker',
+        rows: [['題號', '作答'], ['Q-one', '（1）'], ['Q-next', '']],
+        questionId: 'Q-one',
+        row: '2',
+      },
+      {
+        name: 'missing marker number',
+        rows: [['題號', '作答'], ['Q-missing', '（1）'], ['', '（3）']],
+        questionId: 'Q-missing',
+        row: '3',
+      },
+      {
+        name: 'repeated marker number',
+        rows: [['題號', '作答'], ['Q-repeat', '（1）'], ['', '（2）'], ['', '（2）']],
+        questionId: 'Q-repeat',
+        row: '4',
+      },
+      {
+        name: 'reversed marker order',
+        rows: [['題號', '作答'], ['Q-reversed', '（1）'], ['', '（3）'], ['', '（2）']],
+        questionId: 'Q-reversed',
+        row: '3',
+      },
+      {
+        name: 'orphaned marker',
+        rows: [['題號', '作答'], ['', '（2）'], ['Q-after', '']],
+        questionId: 'Q-after',
+        row: '2',
+      },
+      {
+        name: 'non-contiguous child rows',
+        rows: [['題號', '作答'], ['Q-gap', '（1）'], ['', ''], ['', '（2）']],
+        questionId: 'Q-gap',
+        row: '4',
+      },
+    ];
+
+    for (const invalid of invalidLayouts) {
+      let thrown: unknown;
+      try {
+        parseWorksheet(invalid.rows);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, invalid.name).toBeInstanceOf(WorksheetParserError);
+      expect((thrown as Error).message, invalid.name).toContain(invalid.questionId);
+      expect((thrown as Error).message, invalid.name).toContain(`第 ${invalid.row} 列`);
+    }
+  });
+
+  it('accepts 20 group slots and rejects a 21st slot', () => {
+    const twenty = [
+      ['題號', '作答'],
+      ['Q-20', '（1）'],
+      ...Array.from({ length: 19 }, (_, index) => ['', `（${index + 2}）`]),
+    ];
+    const twentyOne = [
+      ['題號', '作答'],
+      ['Q-21', '（1）'],
+      ...Array.from({ length: 20 }, (_, index) => ['', `（${index + 2}）`]),
+    ];
+
+    const parsedTwenty = parseWorksheet(twenty);
+    expect(parsedTwenty.questions[0]).toMatchObject({ kind: 'GROUP' });
+    expect(parsedTwenty.questions[0]?.answerSlots).toHaveLength(20);
+    expect(() => parseWorksheet(twentyOne)).toThrowError(expect.objectContaining({ code: 'QUESTION_IDS_INVALID' }));
   });
 });

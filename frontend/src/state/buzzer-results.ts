@@ -1,16 +1,17 @@
-import type { ErrorCode, StudentResults, TeacherProgress } from '../realtime/messages';
+import type { ErrorCode, StudentResults, SubmitAnswerPayload, SubAnswer, TeacherProgress } from '../realtime/messages';
 
 export interface OwnQuestionProgress {
   readonly questionId: string;
   readonly submitted: boolean;
   readonly answerText: string | null;
+  readonly answers?: readonly SubAnswer[] | null;
   readonly locked: boolean;
 }
 
 export interface BuzzerResultsViewState {
   readonly questionIds: readonly string[];
   readonly ownProgress: readonly OwnQuestionProgress[];
-  readonly acceptedSubmission: { readonly questionId: string; readonly answerText: string } | null;
+  readonly acceptedSubmission: SubmitAnswerPayload | null;
   readonly error: { readonly code: ErrorCode; readonly message: string; readonly questionId: string | null } | null;
   readonly teacherProgress: TeacherProgress | null;
   readonly studentResults: StudentResults | null;
@@ -50,9 +51,18 @@ export class BuzzerResultsStore {
     this.#update({ ownProgress: Object.freeze(questions.map((item) => Object.freeze({ ...item }))) });
   }
 
-  applyAccepted(questionId: string, answerText: string): void {
-    this.#setProgress(questionId, { questionId, submitted: true, answerText, locked: true });
-    this.#update({ acceptedSubmission: Object.freeze({ questionId, answerText }), error: null });
+  applyAccepted(questionId: string, answer: string | readonly SubAnswer[]): void {
+    const acceptedSubmission: SubmitAnswerPayload = typeof answer === 'string'
+      ? { questionId, answerText: answer }
+      : { questionId, subAnswers: Object.freeze(answer.map((item) => Object.freeze({ ...item }))) };
+    this.#setProgress(questionId, {
+      questionId,
+      submitted: true,
+      answerText: typeof answer === 'string' ? answer : null,
+      ...(typeof answer === 'string' ? {} : { answers: acceptedSubmission.subAnswers }),
+      locked: true,
+    });
+    this.#update({ acceptedSubmission: Object.freeze(acceptedSubmission), error: null });
   }
 
   applyError(code: ErrorCode, message: string, questionId: string | null): void {

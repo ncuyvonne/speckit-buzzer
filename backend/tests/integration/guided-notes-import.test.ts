@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { loadConfig } from '../../src/config.js';
 import { createRealtimeServer } from '../../src/server.js';
-import { FakeGoogleSheetsAdapter, type FakeWorksheetFixture } from '../support/fake-google-sheets.js';
+import {
+  FakeGoogleSheetsAdapter,
+  type FakeDeveloperMetadataFixture,
+  type FakeWorksheetFixture,
+} from '../support/fake-google-sheets.js';
 import { FakeWinningResultsProvider } from '../support/fake-winning-results.js';
 
 const ORIGIN = 'http://127.0.0.1:5173';
@@ -28,7 +32,8 @@ function createInbox(socket: WebSocket) {
         const timeout = setTimeout(() => {
           const waiterIndex = waiters.indexOf(waiter);
           if (waiterIndex >= 0) waiters.splice(waiterIndex, 1);
-          reject(new Error(`Timed out waiting for message; queued: ${JSON.stringify(messages)}`));
+          const queued = messages.map(({ type, requestId }) => ({ type, requestId })).slice(-10);
+          reject(new Error(`Timed out waiting for message; queued: ${JSON.stringify(queued)}`));
         }, timeoutMs);
         waiters.push({
           predicate,
@@ -42,12 +47,27 @@ function createInbox(socket: WebSocket) {
   };
 }
 
-function fixture(spreadsheetId: string, cells: FakeWorksheetFixture['cells']): FakeWorksheetFixture {
+function fixture(
+  spreadsheetId: string,
+  cells: FakeWorksheetFixture['cells'],
+  options: {
+    readonly sheetId?: number;
+    readonly worksheetTitle?: string;
+    readonly rowCount?: number;
+    readonly columnCount?: number;
+    readonly developerMetadata?: readonly FakeDeveloperMetadataFixture[];
+  } = {},
+): FakeWorksheetFixture {
   return {
-    worksheet: { spreadsheetId, sheetId: 7, worksheetTitle: '工作表1' },
-    rowCount: 8,
-    columnCount: 4,
+    worksheet: {
+      spreadsheetId,
+      sheetId: options.sheetId ?? 7,
+      worksheetTitle: options.worksheetTitle ?? '工作表1',
+    },
+    rowCount: options.rowCount ?? 8,
+    columnCount: options.columnCount ?? 4,
     cells,
+    developerMetadata: options.developerMetadata,
   };
 }
 
@@ -58,6 +78,31 @@ const validCells = {
   A5: '舊答案二', B5: '2', C5: '第二題說明',
   A7: '舊答案四', B7: '4', C7: '第四題說明',
 };
+
+function minimumGroupQuestionId(targetBytes: number): string {
+  const envelope = {
+    type: 'buzzerResults.submitAnswer',
+    requestId: '123e4567-e89b-12d3-a456-426614174000',
+    payload: {
+      questionId: '',
+      subAnswers: [
+        { placeholderNumber: 1, answerText: 'a' },
+        { placeholderNumber: 2, answerText: 'a' },
+      ],
+    },
+  };
+  const questionIdLength = targetBytes - new TextEncoder().encode(JSON.stringify(envelope)).length;
+  if (questionIdLength < 1) throw new Error('TARGET_BYTES_TOO_SMALL');
+  return 'Q'.repeat(questionIdLength);
+}
+
+function minimumGroupCells(questionId: string) {
+  return {
+    A2: '作答', B2: '題號',
+    A3: '（1）', B3: questionId,
+    A4: '（2）', B4: '',
+  };
+}
 
 describe('Guided Notes worksheet import integration', () => {
   const apps: ReturnType<typeof createRealtimeServer>[] = [];
@@ -136,6 +181,7 @@ describe('Guided Notes worksheet import integration', () => {
       .toMatchObject({ requestId: 'wrong-stage-import', payload: { code: 'STAGE_CONFLICT' } });
     expect(sheets.resolveRequests).toHaveLength(0);
     expect(sheets.requestedReadRanges).toHaveLength(0);
+    expect(sheets.metadataSearchRequests).toHaveLength(0);
     expect(app.activity.stage).toBe('BUZZING');
   });
 
@@ -147,7 +193,9 @@ describe('Guided Notes worksheet import integration', () => {
     const { app, port } = await start(sheets);
     const teacher = await connect(port);
     const initialSnapshot = await login(teacher);
-    expect(initialSnapshot.payload).toEqual({ worksheetTitle: null, questionIds: [], questionCount: 0 });
+    expect(initialSnapshot.payload).toEqual({
+      worksheetTitle: null, questionIds: [], questionCount: 0, questionLayouts: [],
+    });
 
     const importedPromise = teacher.inbox.waitFor((message) => message.type === 'guidedNotes.imported');
     sendImport(teacher.socket, 'good-import', 'valid-sheet');
@@ -164,7 +212,16 @@ describe('Guided Notes worksheet import integration', () => {
     const reconnect = await connect(port);
     const reconnectSnapshotPromise = login(reconnect, 'teacher-login-again');
     const reconnectSnapshot = await reconnectSnapshotPromise;
-    expect(reconnectSnapshot.payload).toEqual({ worksheetTitle: '工作表1', questionIds: ['1', '2', '4'], questionCount: 3 });
+    expect(reconnectSnapshot.payload).toEqual({
+      worksheetTitle: '工作表1',
+      questionIds: ['1', '2', '4'],
+      questionCount: 3,
+      questionLayouts: [
+        { questionId: '1', kind: 'SINGLE', answerCount: 1 },
+        { questionId: '2', kind: 'SINGLE', answerCount: 1 },
+        { questionId: '4', kind: 'SINGLE', answerCount: 1 },
+      ],
+    });
     expect(JSON.stringify(reconnectSnapshot)).not.toContain('valid-sheet');
     expect(JSON.stringify(reconnectSnapshot)).not.toContain('題目敘述');
 
@@ -211,5 +268,89 @@ describe('Guided Notes worksheet import integration', () => {
     expect(app.activity.stage).toBe('BUZZING');
     expect(app.activity.questions).toEqual([]);
     expect(app.activity.worksheet).toBeNull();
+  });
+
+  it('accepts a 16,384-byte minimum group request and rejects 16,385 bytes without replacing activity state', async () => {
+    const exactId = minimumGroupQuestionId(16_384);
+    const oversizedId = minimumGroupQuestionId(16_385);
+    const sheets = new FakeGoogleSheetsAdapter([
+      fixture('exact-minimum', minimumGroupCells(exactId), { rowCount: 5 }),
+      fixture('oversized-minimum', minimumGroupCells(oversizedId), { rowCount: 5 }),
+    ]);
+    const { app, port } = await start(sheets);
+    const teacher = await connect(port);
+    await login(teacher);
+
+    const accepted = teacher.inbox.waitFor((message) => message.type === 'guidedNotes.imported');
+    sendImport(teacher.socket, 'exact-minimum-import', 'exact-minimum');
+    expect(await accepted).toMatchObject({
+      requestId: 'exact-minimum-import',
+      payload: { questionCount: 1, questionIds: [exactId] },
+    });
+    const stateBeforeOversized = structuredClone(app.activity.questions);
+
+    const rejected = teacher.inbox.waitFor((message) => message.type === 'error');
+    sendImport(teacher.socket, 'oversized-minimum-import', 'oversized-minimum');
+    const error = await rejected;
+    const message = String(error.payload.message ?? '');
+    expect(message).toContain(oversizedId);
+    expect(message).toContain('第 3 列');
+    expect(message).toContain('16,384');
+    expect(app.activity.questions).toEqual(stateBeforeOversized);
+    expect(app.activity.worksheet?.spreadsheetId).toBe('exact-minimum');
+  });
+
+  it('blocks selected sheets carrying PROJECT sb004 row/column anchors but ignores unrelated metadata', async () => {
+    const sheets = new FakeGoogleSheetsAdapter([
+      fixture('valid-sheet', validCells),
+      fixture('exported-workbook', validCells, {
+        developerMetadata: [
+          { metadataKey: 'sb004', visibility: 'PROJECT', locationType: 'ROW', sheetId: 7 },
+        ],
+      }),
+      fixture('safe-workbook', validCells, {
+        developerMetadata: [
+          { metadataKey: 'another-feature', visibility: 'PROJECT', locationType: 'ROW', sheetId: 7 },
+          { metadataKey: 'sb004', visibility: 'PROJECT', locationType: 'SHEET', sheetId: 7 },
+          { metadataKey: 'sb004', visibility: 'PROJECT', locationType: 'ROW', sheetId: 9 },
+          { metadataKey: 'sb004', visibility: 'DOCUMENT', locationType: 'COLUMN', sheetId: 7 },
+        ],
+      }),
+      fixture('safe-workbook', validCells, {
+        sheetId: 9,
+        worksheetTitle: '其他分頁',
+        developerMetadata: [
+          { metadataKey: 'sb004', visibility: 'PROJECT', locationType: 'COLUMN', sheetId: 9 },
+        ],
+      }),
+    ]);
+    const { app, port } = await start(sheets);
+    const teacher = await connect(port);
+    await login(teacher);
+
+    const initialImport = teacher.inbox.waitFor((message) => message.type === 'guidedNotes.imported');
+    sendImport(teacher.socket, 'initial-import', 'valid-sheet');
+    await initialImport;
+    const previousQuestions = structuredClone(app.activity.questions);
+    const readCountBeforeBlock = sheets.requestedReadRanges.length;
+
+    const blockedImport = teacher.inbox.waitFor((message) => message.type === 'error');
+    sendImport(teacher.socket, 'blocked-exported-import', 'exported-workbook');
+    const blocked = await blockedImport;
+    expect(String(blocked.payload.message ?? '')).toContain('原始');
+    expect(String(blocked.payload.message ?? '')).toContain('未匯出');
+    expect(app.activity.questions).toEqual(previousQuestions);
+    expect(app.activity.worksheet?.spreadsheetId).toBe('valid-sheet');
+    expect(sheets.requestedReadRanges).toHaveLength(readCountBeforeBlock);
+
+    const allowedImport = teacher.inbox.waitFor((message) => message.type === 'guidedNotes.imported');
+    sendImport(teacher.socket, 'unrelated-metadata-import', 'safe-workbook');
+    expect(await allowedImport).toMatchObject({ requestId: 'unrelated-metadata-import' });
+    expect(app.activity.worksheet?.spreadsheetId).toBe('safe-workbook');
+    expect(sheets.metadataSearchRequests).toEqual([
+      { spreadsheetId: 'valid-sheet', metadataKey: 'sb004', visibility: 'PROJECT' },
+      { spreadsheetId: 'exported-workbook', metadataKey: 'sb004', visibility: 'PROJECT' },
+      { spreadsheetId: 'safe-workbook', metadataKey: 'sb004', visibility: 'PROJECT' },
+    ]);
   });
 });

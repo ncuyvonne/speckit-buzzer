@@ -1,0 +1,119 @@
+@startuml
+title 004 題組與多填空 - 類別圖
+
+class Activity {
+  stage
+  questions
+  worksheet
+  exportAnchorState
+}
+
+abstract class Question {
+  questionId
+  displayOrder
+}
+
+class SingleQuestion
+class GroupQuestion
+
+class AnswerSlot {
+  placeholderNumber
+  sourceRowAtImport
+}
+
+class WorksheetReference {
+  spreadsheet
+  worksheet
+}
+
+class ExportManifest {
+  sheetId
+  initial coordinates
+  target question and slot mapping
+  dimension metadata IDs
+  prewrite and intended values
+}
+
+class ExportAnchorState {
+  status: NONE | PREPARED | CONFIRMED
+}
+
+class GuidedNotesService {
+  pendingRepeat
+}
+
+abstract class AcceptedSubmission {
+  groupId
+  questionId
+  receivedOrder
+  acceptedAt
+  locked
+}
+
+class SingleSubmission {
+  answerText
+}
+
+class GroupSubmission {
+  answers
+}
+
+class SubAnswer {
+  placeholderNumber
+  answerText
+}
+
+class QuestionResult {
+  winningGroupId
+  winningReceivedOrder
+}
+
+class BuzzerResultsService {
+  submissions
+  winners
+}
+
+Question <|-- SingleQuestion
+Question <|-- GroupQuestion
+Activity "1" o-- "0..100" Question
+Activity "1" --> "0..1" WorksheetReference
+Activity "1" *-- "1" ExportAnchorState
+ExportAnchorState "1" *-- "0..1" ExportManifest
+GuidedNotesService "1" --> "0..1" ExportManifest : uncertain repeat
+GroupQuestion "1" *-- "2..20" AnswerSlot
+AcceptedSubmission <|-- SingleSubmission
+AcceptedSubmission <|-- GroupSubmission
+AcceptedSubmission "*" --> "1" Question : questionId
+GroupSubmission "1" *-- "2..20" SubAnswer
+QuestionResult "0..1" --> "1" AcceptedSubmission : winner
+QuestionResult "0..1" --> "1" Question
+BuzzerResultsService "1" o-- "0..*" GroupSubmission
+BuzzerResultsService "1" o-- "0..*" SingleSubmission
+BuzzerResultsService "1" o-- "0..*" QuestionResult
+
+note right of AcceptedSubmission
+每組每題最多一筆完整有效提交；
+單題保留原始一字串提交形狀。
+end note
+
+note right of GroupSubmission
+只適用 GROUP：包含全部 2 至 20 個
+依佔位符編號排序的子答案。
+end note
+
+note bottom of GroupQuestion
+佔位符編號由 1 開始且連續；
+子題數可因題組而異。
+end note
+
+note right of AnswerSlot
+首次匯出依目前佔位符定位；
+再次匯出需驗證原坐標與題目／子題對應。
+end note
+
+note right of ExportManifest
+首次寫入前保留；同批建立 PROJECT key=sb004 列欄標記。
+結果未確認時以標記和已輸入值讀回驗證。
+活動結束後保留至活動替換或程序重啟。
+end note
+@enduml

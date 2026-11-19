@@ -82,6 +82,7 @@ describe('Guided Notes answer export integration', () => {
     provider = new FakeWinningResultsProvider({ status: 'READY', answers: readyAnswers }),
     importWorksheet = true,
     stage: 'PREPARING' | 'BUZZING' | 'ENDED' = 'ENDED',
+    questions: readonly Question[] = activityQuestions,
   ) {
     const app = createRealtimeServer({
       config: loadConfig({ GROUP_IDS: '1,2', TEACHER_PASSWORD: 'test-password' }),
@@ -89,7 +90,7 @@ describe('Guided Notes answer export integration', () => {
       guidedNotes: { sheetsAdapter: sheets, winningResultsProvider: provider },
     });
     apps.push(app);
-    if (importWorksheet) app.activity.replaceGuidedNotesImport(worksheet, activityQuestions);
+    if (importWorksheet) app.activity.replaceGuidedNotesImport(worksheet, questions);
     if (stage === 'BUZZING' || stage === 'ENDED') app.activity.advance('PREPARING', 'BUZZING');
     if (stage === 'ENDED') app.activity.advance('BUZZING', 'ENDED');
     return { app, port: await app.listen(0), provider };
@@ -165,6 +166,97 @@ describe('Guided Notes answer export integration', () => {
     });
   });
 
+  it('writes mixed single/group vectors and no-winner clears to each marker in one anchored batch', async () => {
+    const groupFixture: FakeWorksheetFixture = {
+      worksheet,
+      rowCount: 10,
+      columnCount: 4,
+      cells: {
+        A2: '作答', B2: '題號', C2: '題目敘述',
+        A3: '舊單題', B3: '1', C3: 'single',
+        A4: '（1）', B4: '2',
+        A5: '（2）', B5: '',
+        A7: '（1）', B7: '4',
+        A8: '（2）', B8: '',
+        A9: '（3）', B9: '',
+      },
+    };
+    const groupQuestions: readonly Question[] = [
+      { questionId: '1', kind: 'SINGLE', displayOrder: 1, sourceRowAtImport: 3, answerSlots: [{ placeholderNumber: 1, sourceRowAtImport: 3 }] },
+      { questionId: '2', kind: 'GROUP', displayOrder: 2, sourceRowAtImport: 4, answerSlots: [
+        { placeholderNumber: 1, sourceRowAtImport: 4 },
+        { placeholderNumber: 2, sourceRowAtImport: 5 },
+      ] },
+      { questionId: '4', kind: 'GROUP', displayOrder: 3, sourceRowAtImport: 7, answerSlots: [
+        { placeholderNumber: 1, sourceRowAtImport: 7 },
+        { placeholderNumber: 2, sourceRowAtImport: 8 },
+        { placeholderNumber: 3, sourceRowAtImport: 9 },
+      ] },
+    ];
+    const results = new FakeWinningResultsProvider({ status: 'READY', answers: [
+      { questionId: '1', groupId: 'A', answerText: '單題答案' },
+      { questionId: '2', groupId: 'B', answers: [
+        { placeholderNumber: 1, answerText: '=題組答案一' },
+        { placeholderNumber: 2, answerText: '題組答案二' },
+      ] },
+    ] });
+    const sheets = new FakeGoogleSheetsAdapter([groupFixture]);
+    const { app } = await start(sheets, results, true, 'ENDED', groupQuestions);
+
+    await expect(app.guidedNotes.exportAnswers()).resolves.toEqual({ writtenCellCount: 3, clearedCellCount: 3 });
+    expect(sheets.exportBatches).toHaveLength(1);
+    expect(sheets.exportBatches[0]?.writes).toEqual([
+      { questionId: '1', rowNumber: 3, answerColumnNumber: 1, value: '單題答案' },
+      { questionId: '2', rowNumber: 4, answerColumnNumber: 1, value: '=題組答案一' },
+      { questionId: '2', rowNumber: 5, answerColumnNumber: 1, value: '題組答案二' },
+      { questionId: '4', rowNumber: 7, answerColumnNumber: 1, value: '' },
+      { questionId: '4', rowNumber: 8, answerColumnNumber: 1, value: '' },
+      { questionId: '4', rowNumber: 9, answerColumnNumber: 1, value: '' },
+    ]);
+    expect(sheets.exportBatches[0]?.anchors).toHaveLength(9);
+    expect(sheets.getCellState(worksheet, 'A4').value).toBe('=題組答案一');
+    expect(sheets.getCellState(worksheet, 'A5').value).toBe('題組答案二');
+    expect(sheets.getCellState(worksheet, 'A9').value).toBe('');
+    expect(sheets.getCellState(worksheet, 'C3').value).toBe('single');
+    expect(app.activity.exportAnchorState.status).toBe('CONFIRMED');
+
+    const firstManifest = app.activity.exportAnchorState.status === 'CONFIRMED'
+      ? app.activity.exportAnchorState.manifest
+      : null;
+    expect(firstManifest?.targets.map(({ questionId, placeholderNumber, rowNumber }) => ({ questionId, placeholderNumber, rowNumber })))
+      .toEqual([
+        { questionId: '1', placeholderNumber: 1, rowNumber: 3 },
+        { questionId: '2', placeholderNumber: 1, rowNumber: 4 },
+        { questionId: '2', placeholderNumber: 2, rowNumber: 5 },
+        { questionId: '4', placeholderNumber: 1, rowNumber: 7 },
+        { questionId: '4', placeholderNumber: 2, rowNumber: 8 },
+        { questionId: '4', placeholderNumber: 3, rowNumber: 9 },
+      ]);
+
+    sheets.setCellState(worksheet, 'A4', '老師只修改答案格');
+    results.snapshot = { status: 'READY', answers: [
+      { questionId: '1', groupId: 'A', answerText: '單題更新' },
+      { questionId: '2', groupId: 'B', answers: [
+        { placeholderNumber: 1, answerText: '更新一' },
+        { placeholderNumber: 2, answerText: '更新二' },
+      ] },
+    ] };
+    await expect(app.guidedNotes.exportAnswers()).resolves.toEqual({ writtenCellCount: 3, clearedCellCount: 3 });
+    expect(sheets.exportBatches).toHaveLength(2);
+    expect(sheets.exportBatches[1]?.anchors).toEqual([]);
+    expect(sheets.exportBatches[1]?.writes.map((write) => write.rowNumber)).toEqual([3, 4, 5, 7, 8, 9]);
+    expect(sheets.getCellState(worksheet, 'A4').value).toBe('更新一');
+    expect(app.activity.exportAnchorState.status).toBe('CONFIRMED');
+
+    const confirmed = app.activity.exportAnchorState.status === 'CONFIRMED'
+      ? app.activity.exportAnchorState.manifest
+      : null;
+    const rowAnchor = confirmed?.anchors.find((anchor) => anchor.dimension === 'ROW' && anchor.coordinate === 5);
+    if (rowAnchor) sheets.removeDeveloperMetadata(worksheet, rowAnchor.metadataId);
+    await expect(app.guidedNotes.exportAnswers()).rejects.toMatchObject({ code: 'QUESTION_TARGET_INVALID' });
+    expect(sheets.exportBatches).toHaveLength(2);
+  });
+
   it('exports correctly when headers are on row 5 and answer/question columns are E and C', async () => {
     const alternateFixture: FakeWorksheetFixture = {
       worksheet,
@@ -199,6 +291,30 @@ describe('Guided Notes answer export integration', () => {
     expect(sheets.getCellState(worksheet, 'D5')).toMatchObject({
       value: '不應改動', note: '標題旁資料',
     });
+  });
+
+  it('reconciles an uncertain confirmed re-export before sending another target-only batch', async () => {
+    const sheets = new FakeGoogleSheetsAdapter([currentWorksheetFixture()]);
+    const results = new FakeWinningResultsProvider({ status: 'READY', answers: readyAnswers });
+    const { app } = await start(sheets, results);
+    await app.guidedNotes.exportAnswers();
+    expect(app.activity.exportAnchorState.status).toBe('CONFIRMED');
+
+    sheets.setCellState(worksheet, 'A5', '老師的現有修改');
+    results.snapshot = { status: 'READY', answers: [
+      { questionId: '1', groupId: 'A', answerText: '更新答案一' },
+      { questionId: '4', groupId: 'B', answerText: '更新答案四' },
+    ] };
+    sheets.nextWriteFailure = { kind: 'LOST_RESPONSE', commit: 'NONE', readBack: 'UNAVAILABLE' };
+    await expect(app.guidedNotes.exportAnswers()).rejects.toMatchObject({ code: 'SHEET_WRITE_UNCONFIRMED' });
+    expect(app.activity.exportAnchorState.status).toBe('CONFIRMED');
+    expect(sheets.exportBatches).toHaveLength(2);
+    expect(sheets.exportBatches[1]?.anchors).toEqual([]);
+
+    await expect(app.guidedNotes.exportAnswers()).rejects.toMatchObject({ code: 'SHEET_WRITE_FAILED' });
+    expect(sheets.exportBatches).toHaveLength(2);
+    expect(app.activity.exportAnchorState.status).toBe('CONFIRMED');
+    expect(sheets.getCellState(worksheet, 'A5').value).toBe('老師的現有修改');
   });
 
   it('returns WORKSHEET_NOT_IMPORTED before calling the results provider or Sheets adapter', async () => {
@@ -302,14 +418,14 @@ describe('Guided Notes answer export integration', () => {
   it('reports SHEET_WRITE_UNCONFIRMED when a lost response cannot be resolved by read-back', async () => {
     const sheets = new FakeGoogleSheetsAdapter([currentWorksheetFixture()]);
     sheets.nextWriteFailure = { kind: 'LOST_RESPONSE', commit: 'NONE', readBack: 'UNAVAILABLE' };
-    const { port } = await start(sheets);
-    const teacher = await connect(port);
-    await login(teacher);
-
-    expect(await exportAndReceive(teacher, 'lost-unresolved')).toMatchObject({
-      type: 'error', requestId: 'lost-unresolved', payload: { code: 'SHEET_WRITE_UNCONFIRMED' },
-    });
+    const { app } = await start(sheets);
+    await expect(app.guidedNotes.exportAnswers()).rejects.toMatchObject({ code: 'SHEET_WRITE_UNCONFIRMED' });
     expect(sheets.writeBatches).toHaveLength(1);
+    expect(app.activity.exportAnchorState.status).toBe('PREPARED');
+
+    await expect(app.guidedNotes.exportAnswers()).rejects.toMatchObject({ code: 'SHEET_WRITE_FAILED' });
+    expect(sheets.writeBatches).toHaveLength(1);
+    expect(app.activity.exportAnchorState.status).toBe('NONE');
   });
 
   it('uses one RAW multi-range Sheets API batch for literal answer strings and clears', async () => {
@@ -338,5 +454,104 @@ describe('Guided Notes answer export integration', () => {
         ],
       },
     });
+  });
+
+  it('creates literal cell updates and row/column developer metadata in one atomic Sheets batch', async () => {
+    const batchUpdate = vi.fn(async () => ({ data: {} }));
+    const client = { spreadsheets: { batchUpdate } } as unknown as sheets_v4.Sheets;
+    const adapter = createGoogleSheetsAdapter(null, client);
+    const resolved = {
+      worksheet: { spreadsheetId: 'sheet-id', sheetId: 9, worksheetTitle: "Teacher's Notes" },
+      rowCount: 20,
+      columnCount: 5,
+    };
+    const anchor = {
+      metadataId: 123_456,
+      metadataKey: 'sb004' as const,
+      attemptToken: 'attempt-1',
+      dimension: 'ROW' as const,
+      sheetId: 9,
+      coordinate: 3,
+    };
+
+    await adapter.batchExport(resolved, [
+      { questionId: 'G', rowNumber: 3, answerColumnNumber: 2, value: '=literal answer' },
+      { questionId: 'G', rowNumber: 4, answerColumnNumber: 2, value: '' },
+    ], [anchor]);
+
+    expect(batchUpdate).toHaveBeenCalledTimes(1);
+    expect(batchUpdate.mock.calls[0]?.[0]).toMatchObject({
+      spreadsheetId: 'sheet-id',
+      requestBody: {
+        requests: [
+          {
+            updateCells: {
+              range: { sheetId: 9, startRowIndex: 2, endRowIndex: 3, startColumnIndex: 1, endColumnIndex: 2 },
+              rows: [{ values: [{ userEnteredValue: { stringValue: '=literal answer' } }] }],
+              fields: 'userEnteredValue',
+            },
+          },
+          {
+            updateCells: {
+              range: { sheetId: 9, startRowIndex: 3, endRowIndex: 4, startColumnIndex: 1, endColumnIndex: 2 },
+              rows: [{ values: [{}] }],
+              fields: 'userEnteredValue',
+            },
+          },
+          {
+            createDeveloperMetadata: {
+              developerMetadata: {
+                metadataId: 123_456,
+                metadataKey: 'sb004',
+                metadataValue: 'v1:attempt-1:ROW:9:3',
+                visibility: 'PROJECT',
+                location: { dimensionRange: { sheetId: 9, dimension: 'ROWS', startIndex: 2, endIndex: 3 } },
+              },
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it('reads formatted worksheet values alongside exact user-entered cell values', async () => {
+    const get = vi.fn(async () => ({ data: {
+      sheets: [{ properties: { sheetId: 9 }, data: [{ rowData: [
+        { values: [
+          { formattedValue: '題號', userEnteredValue: { stringValue: '題號' } },
+          { formattedValue: '作答', userEnteredValue: { stringValue: '作答' } },
+        ] },
+        { values: [
+          { formattedValue: '1', userEnteredValue: { numberValue: 1 } },
+          { formattedValue: '2', userEnteredValue: { formulaValue: '=1+1' } },
+        ] },
+      ] }] }],
+    } }));
+    const client = { spreadsheets: { get } } as unknown as sheets_v4.Sheets;
+    const adapter = createGoogleSheetsAdapter(null, client);
+    const resolved = {
+      worksheet: { spreadsheetId: 'sheet-id', sheetId: 9, worksheetTitle: "Teacher's Notes" },
+      rowCount: 3,
+      columnCount: 3,
+    };
+
+    const grid = await adapter.readWorksheet(resolved);
+
+    expect(get).toHaveBeenCalledWith({
+      spreadsheetId: 'sheet-id',
+      ranges: ["'Teacher''s Notes'!A1:C3"],
+      includeGridData: true,
+      fields: 'sheets(properties(sheetId),data(rowData(values(formattedValue,userEnteredValue))))',
+    });
+    expect(grid.values).toEqual([
+      ['題號', '作答', ''],
+      ['1', '2', ''],
+      ['', '', ''],
+    ]);
+    expect(grid.rawValues).toEqual([
+      ['{"stringValue":"題號"}', '{"stringValue":"作答"}', null],
+      ['{"numberValue":1}', '{"formulaValue":"=1+1"}', null],
+      [null, null, null],
+    ]);
   });
 });
