@@ -60,4 +60,10 @@ npm run build
 | `npm run build` | Passed for frontend Vite build and backend TypeScript build. |
 | `& 'C:\Program Files (x86)\Java\jre1.8.0_481\bin\java.exe' -jar 'C:\Users\USER\Desktop\speckit_buzzer\plantuml.jar' .\diagrams\005-buzzer-ranking-export-component.puml .\diagrams\005-buzzer-ranking-export-class.puml .\diagrams\005-buzzer-ranking-export-sequence.puml` | Passed; all three matching PNGs were regenerated and visually inspected. |
 
-The SC-006 Playwright test also attaches `sc-006-ranking-latencies.json` with the measured group count and each submission latency. These results describe the local test run; configure `PLAYWRIGHT_GROUP_IDS` to match the backend `GROUP_IDS` when repeating the walkthrough with a different class roster.
+2026-11-20 T041 focused revalidation:
+
+| Command | Result |
+|---|---|
+| `npm run test:e2e --workspace @speckit-buzzer/frontend -- buzzer-results-ranking.spec.ts --reporter=line` | Passed: 2 Playwright tests. SC-006 used N = 3; winning group was `1`, with submission-to-visible-update measurements of 51 ms, 45 ms, and 45 ms. |
+
+The SC-006 Playwright test also attaches `sc-006-ranking-latencies.json` with `groupCountN` and each submission's `groupId`, `rank`, `winningGroupId`, and latency. These results describe the local test run; configure `PLAYWRIGHT_GROUP_IDS` to match the backend `GROUP_IDS` when repeating the walkthrough with a different class roster. The 2026-11-20 run was a focused revalidation of the ranking E2E tests; it did not rerun the full suite.

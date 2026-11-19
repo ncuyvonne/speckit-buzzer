@@ -41,21 +41,32 @@ base('fairness off: server receive order updates every configured group within t
   expect(groupIds.length).toBeGreaterThan(0);
   const teacher = await createTeacher(browser);
   const students: import('@playwright/test').Page[] = [];
-  const measurements: Array<{ groupId: string; rank: number; latencyMs: number }> = [];
+  const measurements: Array<{ groupId: string; rank: number; winningGroupId: string; latencyMs: number }> = [];
 
   try {
     for (const groupId of groupIds) students.push(await createStudent(browser, groupId));
     await teacher.getByRole('button', { name: '開始搶答' }).click();
 
+    const winningGroupId = groupIds[0]!;
+    const questionOne = teacher.locator('ol > li').filter({
+      has: teacher.getByRole('heading', { name: '題目 1', exact: true }),
+    });
     for (const [index, groupId] of groupIds.entries()) {
       const student = students[index]!;
       await student.getByLabel('題目').selectOption('1');
       await student.getByLabel('答案').fill(`公平關閉-${groupId}`);
       const submittedAt = Date.now();
       await student.getByRole('button', { name: '送出答案' }).click();
-      await expect(teacher.getByText(`組別 ${groupId}：第 ${index + 1} 名`, { exact: true })).toBeVisible({ timeout: 2_000 });
+      await Promise.all([
+        expect(questionOne.getByText(`組別 ${groupId}：第 ${index + 1} 名`, { exact: true }))
+          .toBeVisible({ timeout: 2_000 }),
+        expect(questionOne.getByText(
+          `目前成功組別：${winningGroupId}；答案：公平關閉-${winningGroupId}`,
+          { exact: true },
+        )).toBeVisible({ timeout: 2_000 }),
+      ]);
       const latencyMs = Date.now() - submittedAt;
-      measurements.push({ groupId, rank: index + 1, latencyMs });
+      measurements.push({ groupId, rank: index + 1, winningGroupId, latencyMs });
       expect(latencyMs).toBeLessThanOrEqual(2_000);
     }
 

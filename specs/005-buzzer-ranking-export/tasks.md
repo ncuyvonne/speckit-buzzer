@@ -193,3 +193,9 @@ Each story has its own tests and checkpoint. Do not begin CSV or ended-result in
 - Reuse current test fixtures in `backend/tests/support/` and `frontend/tests/e2e/fixtures.ts` where applicable; do not add dependencies unless an implementation gap is demonstrated.
 - The original checkout remains `codex-003-buzzer-results`; the dedicated `codex/005-buzzer-ranking-export` worktree is the implementation checkout, and T001 records that the independent-branch gate is complete. Do not switch or commit the original checkout wholesale.
 - T036 remains open until the Feature 005 PR receives reviewer approval; PR #4 is merged and PR #5 currently targets `main`. Do not merge PR #5 before review approval.
+
+---
+
+## Phase 8: Convergence
+
+- [x] T041 Extend the SC-006 Playwright check in `frontend/tests/e2e/buzzer-results-ranking.spec.ts` to assert the teacher-visible successful group within the same 2-second window as each rank update, and include the winner in each latency measurement attachment per SC-006 and T013 (partial).
