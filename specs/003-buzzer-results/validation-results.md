@@ -103,6 +103,31 @@ The E2E output is recorded as observed; its shell completion status is not claim
 
 The first complete Playwright pass after enabling the same-group broadcast exposed one outdated assertion that expected a second student to submit after the first student had locked the question. That E2E was updated to assert the immediate disabled state, shared answer and lock message; the affected 2-test run then passed, followed by the full 31-test pass above.
 
-## PR review handoff
+## Phase 13 — PR review follow-up: privacy and deterministic assertions
 
-The corrections and evidence in this section are pushed to the existing PR #3 branch after local validation. This run did not request another review or merge the PR. T032 remains unchecked until external approval is recorded and the review conclusion is added here.
+| Command | Exit | Observed result |
+|---|---:|---|
+| `npm run test --workspace @speckit-buzzer/backend -- tests/integration/buzzer-results-teacher-progress.test.ts tests/integration/buzzer-results-submit.test.ts` | 0 | 2 integration files, 6/6 tests passed. Covers A/B/C group-only progress, a BUZZING reconnect, ENDED result privacy, ordered stage-change fences, and the server `receivedOrder` test boundary. |
+
+The integration tests no longer use a fixed 30 ms delay. They await the `activity.phaseChanged` frame as an ordered end-of-delivery signal before inspecting student packets.
+
+## Phase 14 — PR review follow-up: full regression and documentation
+
+| Command | Exit | Observed result |
+|---|---:|---|
+| `npm test` | 0 | Frontend Vitest: 2 files / 4 tests passed. Backend Vitest: 23 files / 119 tests passed. |
+| `$env:PLAYWRIGHT_PORT='5203'; $env:PLAYWRIGHT_TEST_ORIGIN='http://127.0.0.1:5203'; npm run test:e2e --workspace @speckit-buzzer/frontend -- --reporter=line` | 0 | 31/31 Playwright tests passed in 32.4 seconds. Vite logged socket-close proxy messages as tests closed WebSockets; the suite exited successfully. |
+| `npm run typecheck` | 0 | Frontend and backend typechecks passed. |
+| `npm run build` | 0 | Vite production build and backend TypeScript build passed. |
+| `git diff --check` | 0 | No whitespace errors. |
+
+The first Playwright attempt used a non-default port without setting the matching allowed WebSocket origin and failed to connect. A second setup attempt started an extra backend and hit `EADDRINUSE`. The command in the table uses the matching origin and lets the test fixture manage its backend; it passed the full suite.
+
+The Feature 002 source comment, plan summary, blueprint mapping, and data model now agree that production defaults to `BuzzerWinningResultsProvider`; `UnavailableWinningResultsProvider` is only an explicitly injected fallback.
+
+## PR review history and next gate
+
+- PR: [#3 — feat: implement buzzer answer results (003)](https://github.com/ncuyvonne/speckit-buzzer/pull/3).
+- mini-duan's latest recorded review was `APPROVED` at `2026-11-19T09:30:14Z` (2026-11-19 17:30:14 Asia/Taipei), based on head `1c396b779067fab1fa9ef79493eeb3e138b309eb` (`1c396b7`). The reviewer confirmed the earlier blocking findings were addressed, reported local Vitest, typecheck, and Playwright passes, and approved merging that head.
+- That review requested T032 be recorded before merge and listed three low-priority follow-ups: correct the unavailable-provider wording, strengthen privacy coverage for BUZZING reconnect/group B/ENDED, and clarify that the parallel test checks consistency with `receivedOrder`, not network arrival timing. The current changes address all three suggestions.
+- These follow-up changes are validated for the existing PR branch. After pushing this new head, request mini-duan to review the updated revision; keep T032 unchecked until that revision's review conclusion is recorded. Do not merge while that gate is pending.

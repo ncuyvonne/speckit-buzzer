@@ -234,7 +234,7 @@ describe('buzzer results submit WebSocket integration', () => {
     });
   });
 
-  it('uses server receive order to select the winner when different groups submit in parallel', async () => {
+  it('matches the winner to server-assigned receivedOrder for near-concurrent group submissions', async () => {
     const { app, port } = await startServer();
     const teacher = await connect(port);
     const studentA = await connect(port);
@@ -253,7 +253,7 @@ describe('buzzer results submit WebSocket integration', () => {
     const ackA = studentA.inbox.waitFor((message) => message.type === 'buzzerResults.submitted');
     const ackB = studentB.inbox.waitFor((message) => message.type === 'buzzerResults.submitted');
 
-    // Send both socket frames before awaiting either acknowledgment.
+    // This verifies consistency with server-assigned receivedOrder; it does not infer network arrival timing.
     studentA.socket.send(JSON.stringify({
       type: 'buzzerResults.submitAnswer', requestId: 'parallel-A', payload: { questionId: '1', answerText: '答案 A' },
     }));

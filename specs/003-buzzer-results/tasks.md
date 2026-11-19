@@ -213,3 +213,12 @@ T004 frontend/tests/e2e/buzzer-results-submit.spec.ts
 ## Phase 12: PR Review Corrections — Design Artifacts and Evidence
 - [X] T045 對齊 US1 規格、003 計畫與 WebSocket 契約中的同組 ownProgress 即時更新；修正 002 圖表中 provider 的正式注入／測試 fallback 說明，並更新 003 圖表及所有受影響 PNG per Constitution V, VII (review finding)
 - [X] T046 將 Phase 10–12 的紅綠測試、測試命令／退出碼和 PlantUML 結果記錄於 `validation-results.md`；保留 T032 未完成，直到外部審查核准並記錄審查結論 per Constitution III, V (review finding)
+
+## Phase 13: PR Review Follow-up — Privacy and Deterministic Assertions
+- [X] T047 在 `backend/tests/integration/buzzer-results-teacher-progress.test.ts` 覆蓋 A、B、C 組 BUZZING 個人進度、BUZZING 中 A 組重連，以及 ENDED 後成功答案／本組答案的可見邊界；以 `activity.phaseChanged` 作收尾訊號取代固定 30 ms 等待 per FR-011, FR-014, FR-015 (review suggestion)
+- [X] T048 調整 `backend/tests/integration/buzzer-results-submit.test.ts` 的並行測試名稱與註解，明確表示只驗證勝者符合伺服器配置的 `receivedOrder`，不推論網路到達先後 (review suggestion)
+
+## Phase 14: PR Review Follow-up — Documentation and Approval Evidence
+- [X] T049 修正 `backend/src/guided-notes/unavailable-results.ts`、Feature 002 plan 與 data model，說明 UNAVAILABLE provider 僅為明確注入的 fallback，production composition 預設使用 `BuzzerWinningResultsProvider` (review suggestion)
+- [X] T050 在 `specs/003-buzzer-results/validation-results.md` 記錄 PR #3 的原始核准、三項後續建議及本次修正驗證結果 (review evidence)
+- [ ] T051 將本次修正更新至 PR #3 並重新請 mini-duan 複審；最新 head 核准且結論記錄後才勾選 T032 (review gate)
