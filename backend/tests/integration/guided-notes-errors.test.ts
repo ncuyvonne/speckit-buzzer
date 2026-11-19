@@ -122,7 +122,7 @@ describe('Guided Notes integration error behavior', () => {
     )).rejects.toMatchObject({ writeOutcome });
   });
 
-  it('retries idempotent reads at 250 ms and 500 ms, up to two retries per operation', async () => {
+  it('retries idempotent reads at 250 ms and 500 ms, up to two retries per request', async () => {
     const delays: number[] = [];
     let attempts = 0;
     class TransientReadSheets extends FakeGoogleSheetsAdapter {
@@ -144,6 +144,36 @@ describe('Guided Notes integration error behavior', () => {
     expect(attempts).toBe(3);
     expect(delays).toEqual([250, 500]);
     expect(activity.questionCount).toBe(2);
+  });
+
+  it('keeps the retry allowance separate for each read request in one import', async () => {
+    const delays: number[] = [];
+    let metadataAttempts = 0;
+    let valuesAttempts = 0;
+    class TransientMetadataAndValuesSheets extends FakeGoogleSheetsAdapter {
+      override async resolveWorksheet(spreadsheetId: string, worksheetTitle: string) {
+        metadataAttempts += 1;
+        if (metadataAttempts <= 2) throw new FakeSheetsError('READ_FAILED');
+        return super.resolveWorksheet(spreadsheetId, worksheetTitle);
+      }
+
+      override async readWorksheet(...args: Parameters<FakeGoogleSheetsAdapter['readWorksheet']>) {
+        valuesAttempts += 1;
+        if (valuesAttempts === 1) throw new FakeSheetsError('READ_FAILED');
+        return super.readWorksheet(...args);
+      }
+    }
+    const service = createService(new ActivityState(), new TransientMetadataAndValuesSheets([validFixture()]), {
+      now: () => 0,
+      sleep: async (milliseconds) => { delays.push(milliseconds); },
+    });
+
+    await expect(service.importWorksheet({
+      spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/errors-sheet/edit', worksheetTitle: '工作表1',
+    })).resolves.toMatchObject({ questionIds: ['1', '2'], questionCount: 2 });
+    expect(metadataAttempts).toBe(3);
+    expect(valuesAttempts).toBe(2);
+    expect(delays).toEqual([250, 500, 250]);
   });
 
   it('retries only definitively unapplied batches and applies the third attempt once', async () => {
@@ -191,6 +221,39 @@ describe('Guided Notes integration error behavior', () => {
     })).rejects.toMatchObject({ code: 'SHEET_READ_FAILED' });
     expect(activity.questions).toEqual([]);
     expect(activity.worksheet).toBeNull();
+  });
+
+  it('releases the operation lock when a read times out while its request is still pending', async () => {
+    vi.useFakeTimers();
+    try {
+      let finishRead!: () => void;
+      let markReadStarted!: () => void;
+      const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve; });
+      class PendingMetadataSheets extends FakeGoogleSheetsAdapter {
+        override resolveWorksheet(...args: Parameters<FakeGoogleSheetsAdapter['resolveWorksheet']>) {
+          return new Promise<Awaited<ReturnType<FakeGoogleSheetsAdapter['resolveWorksheet']>>>((resolve, reject) => {
+            finishRead = () => { void super.resolveWorksheet(...args).then(resolve, reject); };
+            markReadStarted();
+          });
+        }
+      }
+      const service = createService(new ActivityState(), new PendingMetadataSheets([validFixture()]));
+      const importRequest = service.importWorksheet({
+        spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/errors-sheet/edit', worksheetTitle: '工作表1',
+      });
+      const importRejection = expect(importRequest).rejects.toMatchObject({ code: 'SHEET_READ_FAILED' });
+
+      await readStarted;
+      await vi.advanceTimersByTimeAsync(10_000);
+      await importRejection;
+      expect(service.activeOperation).toBeNull();
+      await expect(service.runExclusive('IMPORT', async () => 'available')).resolves.toBe('available');
+
+      finishRead();
+      for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reports a pending write as unconfirmed at deadline and holds the operation lock until it settles', async () => {

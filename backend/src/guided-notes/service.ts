@@ -76,7 +76,6 @@ export interface GuidedNotesServiceDependencies {
 interface OperationContext {
   readonly operationType: GuidedNotesOperationType;
   readonly deadlineAt: number;
-  retryCount: number;
   writeMayHaveApplied: boolean;
 }
 
@@ -158,7 +157,6 @@ export class GuidedNotesService {
     const context: OperationContext = {
       operationType,
       deadlineAt: this.#now() + OPERATION_DEADLINE_MS,
-      retryCount: 0,
       writeMayHaveApplied: false,
     };
     const pending = Promise.resolve().then(() => operation(this.#dependencies, context));
@@ -174,7 +172,7 @@ export class GuidedNotesService {
       return await Promise.race([pending, deadline]);
     } finally {
       if (timeout !== undefined) clearTimeout(timeout);
-      if (timedOut) {
+      if (timedOut && context.writeMayHaveApplied) {
         void pending.then(() => this.#releaseOperation(operationId), () => this.#releaseOperation(operationId));
       } else {
         this.#releaseOperation(operationId);
@@ -192,18 +190,18 @@ export class GuidedNotesService {
     if (this.#now() >= context.deadlineAt) throw createDeadlineError(context);
   }
 
-  async #waitBeforeRetry(context: OperationContext): Promise<void> {
+  async #waitBeforeRetry(context: OperationContext, retryCount: number): Promise<void> {
     this.#assertBeforeDeadline(context);
-    const delay = RETRY_DELAYS_MS[context.retryCount];
+    const delay = RETRY_DELAYS_MS[retryCount];
     if (delay === undefined || context.deadlineAt - this.#now() <= delay) {
       throw createDeadlineError(context);
     }
-    context.retryCount += 1;
     await this.#sleep(delay);
     this.#assertBeforeDeadline(context);
   }
 
   async #readWithRetry<T>(context: OperationContext, read: () => Promise<T>): Promise<T> {
+    let retryCount = 0;
     while (true) {
       this.#assertBeforeDeadline(context);
       try {
@@ -211,8 +209,9 @@ export class GuidedNotesService {
         this.#assertBeforeDeadline(context);
         return result;
       } catch (error) {
-        if (!isRetryableReadError(error) || context.retryCount >= RETRY_DELAYS_MS.length) throw error;
-        await this.#waitBeforeRetry(context);
+        if (!isRetryableReadError(error) || retryCount >= RETRY_DELAYS_MS.length) throw error;
+        await this.#waitBeforeRetry(context, retryCount);
+        retryCount += 1;
       }
     }
   }
@@ -221,6 +220,7 @@ export class GuidedNotesService {
     context: OperationContext,
     write: () => Promise<void>,
   ): Promise<void> {
+    let retryCount = 0;
     while (true) {
       this.#assertBeforeDeadline(context);
       context.writeMayHaveApplied = true;
@@ -231,8 +231,9 @@ export class GuidedNotesService {
       } catch (error) {
         if (getWriteOutcome(error) !== 'DEFINITELY_NOT_APPLIED') throw error;
         context.writeMayHaveApplied = false;
-        if (context.retryCount >= RETRY_DELAYS_MS.length) throw error;
-        await this.#waitBeforeRetry(context);
+        if (retryCount >= RETRY_DELAYS_MS.length) throw error;
+        await this.#waitBeforeRetry(context, retryCount);
+        retryCount += 1;
       }
     }
   }

@@ -6,15 +6,24 @@ export interface SessionStorageLike {
   removeItem(key: string): void;
 }
 
+function getSessionStorage(): SessionStorageLike | null {
+  try {
+    return typeof window === 'undefined' ? null : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
 /** Holds only the tab's student group selection. The server revalidates it on every connection. */
 export class StudentSelection {
-  readonly #storage: SessionStorageLike;
+  readonly #storage: SessionStorageLike | null;
 
-  constructor(storage: SessionStorageLike = window.sessionStorage) {
+  constructor(storage: SessionStorageLike | null = getSessionStorage()) {
     this.#storage = storage;
   }
 
   read(): string | null {
+    if (this.#storage === null) return null;
     try {
       const groupId = this.#storage.getItem(STORAGE_KEY);
       if (groupId === null) return null;
@@ -33,6 +42,7 @@ export class StudentSelection {
       this.clear();
       return;
     }
+    if (this.#storage === null) return;
     try {
       this.#storage.setItem(STORAGE_KEY, groupId);
     } catch {
@@ -41,6 +51,7 @@ export class StudentSelection {
   }
 
   clear(): void {
+    if (this.#storage === null) return;
     try {
       this.#storage.removeItem(STORAGE_KEY);
     } catch {
