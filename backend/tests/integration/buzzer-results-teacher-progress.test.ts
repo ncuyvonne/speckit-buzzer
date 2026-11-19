@@ -255,6 +255,8 @@ describe('buzzer results teacher progress WebSocket integration', () => {
     }]);
     expect(JSON.stringify(studentB.messages.all)).not.toContain(answers.C);
     expect(JSON.stringify(studentC.messages.all)).not.toContain(answers.B);
+    expect(JSON.stringify(studentA.messages.all)).not.toContain(answers.B);
+    expect(JSON.stringify(studentA.messages.all)).not.toContain(answers.C);
     expect(JSON.stringify(studentAReconnected.messages.all)).not.toContain(answers.B);
     expect(JSON.stringify(studentAReconnected.messages.all)).not.toContain(answers.C);
   });

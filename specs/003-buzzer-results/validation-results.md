@@ -125,9 +125,19 @@ The first Playwright attempt used a non-default port without setting the matchin
 
 The Feature 002 source comment, plan summary, blueprint mapping, and data model now agree that production defaults to `BuzzerWinningResultsProvider`; `UnavailableWinningResultsProvider` is only an explicitly injected fallback.
 
+## Phase 15 — PR review follow-up: post-ENDED privacy
+
+| Command | Exit | Observed result |
+|---|---:|---|
+| `npm run test --workspace @speckit-buzzer/backend -- tests/integration/buzzer-results-teacher-progress.test.ts` | 0 | 1 integration file, 2/2 tests passed. The privacy case now checks after ENDED that both the original A-group connection and its BUZZING reconnect contain neither B nor C's non-winning answer. |
+| `npm test` | 0 | Frontend Vitest: 2 files / 4 tests passed. Backend Vitest: 23 files / 119 tests passed. |
+| `npm run typecheck` | 0 | Frontend and backend typechecks passed. |
+| `git diff --check` | 0 | No whitespace errors. |
+
 ## PR review history and next gate
 
 - PR: [#3 — feat: implement buzzer answer results (003)](https://github.com/ncuyvonne/speckit-buzzer/pull/3).
 - mini-duan's latest recorded review was `APPROVED` at `2026-11-19T09:30:14Z` (2026-11-19 17:30:14 Asia/Taipei), based on head `1c396b779067fab1fa9ef79493eeb3e138b309eb` (`1c396b7`). The reviewer confirmed the earlier blocking findings were addressed, reported local Vitest, typecheck, and Playwright passes, and approved merging that head.
 - That review requested T032 be recorded before merge and listed three low-priority follow-ups: correct the unavailable-provider wording, strengthen privacy coverage for BUZZING reconnect/group B/ENDED, and clarify that the parallel test checks consistency with `receivedOrder`, not network arrival timing. The current changes address all three suggestions.
-- These follow-up changes are validated for the existing PR branch. After pushing this new head, request mini-duan to review the updated revision; keep T032 unchecked until that revision's review conclusion is recorded. Do not merge while that gate is pending.
+- mini-duan then approved head `31a9b6e5328126e06c97fa4c1116baa04c68f5ad` (`31a9b6e`) at `2026-11-19T10:06:58Z` (2026-11-19 18:06:58 Asia/Taipei), confirmed the prior three suggestions and validation, and asked that T051/T032 be checked before merge. The review added one optional suggestion: after ENDED, also inspect the original A-group connection for non-winning answers. Phase 15 adds that assertion for both the original and reconnected A-group sockets; the targeted and full Vitest results are recorded above.
+- The Phase 15 change advances the PR head, so request mini-duan to review that updated revision after pushing it. Keep T032 unchecked until the new head's review conclusion is recorded. Do not merge while that gate is pending.

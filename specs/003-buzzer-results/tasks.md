@@ -221,4 +221,11 @@ T004 frontend/tests/e2e/buzzer-results-submit.spec.ts
 ## Phase 14: PR Review Follow-up — Documentation and Approval Evidence
 - [X] T049 修正 `backend/src/guided-notes/unavailable-results.ts`、Feature 002 plan 與 data model，說明 UNAVAILABLE provider 僅為明確注入的 fallback，production composition 預設使用 `BuzzerWinningResultsProvider` (review suggestion)
 - [X] T050 在 `specs/003-buzzer-results/validation-results.md` 記錄 PR #3 的原始核准、三項後續建議及本次修正驗證結果 (review evidence)
-- [ ] T051 將本次修正更新至 PR #3 並重新請 mini-duan 複審；最新 head 核准且結論記錄後才勾選 T032 (review gate)
+- [X] T051 將本次修正更新至 PR #3 並重新請 mini-duan 複審；該 head 已核准並記錄結論 per Constitution III, V (review gate)
+
+## Phase 15: PR Review Follow-up — Post-ENDED Privacy
+- [X] T052 在 `backend/tests/integration/buzzer-results-teacher-progress.test.ts` 驗證 ENDED 後原始 A 組連線及重連 A 組連線的封包仍不含 B、C 組非勝出答案 per FR-015 (review suggestion)
+
+## Phase 16: PR Review Follow-up — Approval Gate
+- [X] T053 在 `specs/003-buzzer-results/validation-results.md` 記錄 31a9b6e 的核准與 T052 驗證結果 (review evidence)
+- [ ] T054 推送新增的隱私斷言並重新請 mini-duan 複審；目前 head 核准且結論記錄後才完成 T032 (review gate)
