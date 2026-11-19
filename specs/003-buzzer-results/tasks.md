@@ -122,7 +122,7 @@ description: "003 搶答與結果判定的依賴排序實作任務"
 
 - [X] T030 更新 diagrams/003-buzzer-results-component.puml、diagrams/003-buzzer-results-class.puml、diagrams/003-buzzer-results-sequence-submit.puml 及 diagrams/003-buzzer-results-sequence-release.puml，讓最終模組、學生重連 ownProgress、教師廣播和結果釋出流程與程式一致；在 repo 根目錄執行 java -jar plantuml.jar "./diagrams/*.puml" 重新產生 PNG。
 - [X] T031 在 specs/003-buzzer-results/quickstart.md 執行本機端對端驗收與 Vitest、Playwright、typecheck、build 指令，並將命令、退出碼、實際結果和四張圖表核對結果記錄於 specs/003-buzzer-results/validation-results.md。
-- [ ] T032 在 specs/003-buzzer-results/validation-results.md 記錄實際功能分支、測試證據與合併前規格／憲章核對；依 Constitution Principle VI 建立 PR、說明變更及測試結果、取得審查核准後才合併，並記錄 PR 識別資訊及審查結論。
+- [X] T032 在 specs/003-buzzer-results/validation-results.md 記錄實際功能分支、測試證據與合併前規格／憲章核對；依 Constitution Principle VI 建立 PR、說明變更及測試結果、取得審查核准後才合併，並記錄 PR 識別資訊及審查結論。
 
 ---
 
@@ -228,4 +228,4 @@ T004 frontend/tests/e2e/buzzer-results-submit.spec.ts
 
 ## Phase 16: PR Review Follow-up — Approval Gate
 - [X] T053 在 `specs/003-buzzer-results/validation-results.md` 記錄 31a9b6e 的核准與 T052 驗證結果 (review evidence)
-- [ ] T054 推送新增的隱私斷言並重新請 mini-duan 複審；目前 head 核准且結論記錄後才完成 T032 (review gate)
+- [X] T054 推送新增的隱私斷言並重新請 mini-duan 複審；head `8fd3a43` 已核准且結論記錄 per Constitution III, V (review gate)
