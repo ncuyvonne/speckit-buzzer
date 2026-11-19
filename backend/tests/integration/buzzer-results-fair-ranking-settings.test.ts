@@ -56,7 +56,7 @@ describe('fair-ranking settings WebSocket integration', () => {
 
     student.socket.send(JSON.stringify({
       type: 'buzzerResults.setFairRanking', requestId: 'student-set',
-      payload: { enabled: true, delaySeconds: 0.5 },
+      payload: { enabled: true, delaySeconds: 3 },
     }));
     expect(await student.messages.waitFor((message) => message.requestId === 'student-set'))
       .toMatchObject({ type: 'error', payload: { code: 'AUTH_REQUIRED' } });
@@ -68,20 +68,27 @@ describe('fair-ranking settings WebSocket integration', () => {
     expect(await teacher.messages.waitFor((message) => message.type === 'buzzerResults.fairRankingConfigured'))
       .toMatchObject({ payload: { enabled: false, delaySeconds: null } });
 
-    teacher.socket.send(JSON.stringify({
-      type: 'buzzerResults.setFairRanking', requestId: 'invalid-set',
-      payload: { enabled: true, delaySeconds: 0 },
-    }));
-    expect(await teacher.messages.waitFor((message) => message.requestId === 'invalid-set'))
-      .toMatchObject({ type: 'error', payload: { code: 'FAIR_RANKING_INVALID' } });
+    for (const [requestId, enabled, delaySeconds] of [
+      ['invalid-enabled-low', true, 0.99],
+      ['invalid-enabled-high', true, 30.01],
+      ['invalid-disabled-low', false, 0.99],
+      ['invalid-disabled-high', false, 30.01],
+    ] as const) {
+      teacher.socket.send(JSON.stringify({
+        type: 'buzzerResults.setFairRanking', requestId,
+        payload: { enabled, delaySeconds },
+      }));
+      expect(await teacher.messages.waitFor((message) => message.requestId === requestId))
+        .toMatchObject({ type: 'error', payload: { code: 'FAIR_RANKING_INVALID' } });
+    }
     expect(app.activity.fairRankingSettings).toEqual({ enabled: false, delaySeconds: null });
 
     teacher.socket.send(JSON.stringify({
       type: 'buzzerResults.setFairRanking', requestId: 'valid-set',
-      payload: { enabled: true, delaySeconds: 0.5 },
+      payload: { enabled: true, delaySeconds: 1 },
     }));
     expect(await teacher.messages.waitFor((message) => message.requestId === 'valid-set'))
-      .toMatchObject({ type: 'buzzerResults.fairRankingConfigured', payload: { enabled: true, delaySeconds: 0.5 } });
+      .toMatchObject({ type: 'buzzerResults.fairRankingConfigured', payload: { enabled: true, delaySeconds: 1 } });
 
     const phaseChanged = teacher.messages.waitFor((message) => message.type === 'activity.phaseChanged');
     teacher.socket.send(JSON.stringify({
@@ -94,6 +101,6 @@ describe('fair-ranking settings WebSocket integration', () => {
     }));
     expect(await teacher.messages.waitFor((message) => message.requestId === 'late-set'))
       .toMatchObject({ type: 'error', payload: { code: 'STAGE_CONFLICT' } });
-    expect(app.activity.fairRankingSettings).toEqual({ enabled: true, delaySeconds: 0.5 });
+    expect(app.activity.fairRankingSettings).toEqual({ enabled: true, delaySeconds: 1 });
   });
 });

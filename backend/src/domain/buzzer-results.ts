@@ -65,6 +65,16 @@ export interface TeacherProgress {
   readonly questions: readonly TeacherQuestionProgress[];
 }
 
+export interface BuzzerCsvQuestion {
+  readonly questionId: string;
+  readonly submissions: readonly {
+    readonly groupId: string;
+    readonly answerText: string;
+    readonly rank: number;
+    readonly receivedAtMs: number;
+  }[];
+}
+
 export interface StudentQuestionResult {
   readonly questionId: string;
   readonly winningGroupId: string | null;
@@ -138,13 +148,15 @@ export class BuzzerResultsService {
     if (this.#activity.stage !== 'PREPARING') return { accepted: false, code: 'STAGE_CONFLICT' };
     if (settings.enabled && (typeof settings.delaySeconds !== 'number'
       || !Number.isFinite(settings.delaySeconds)
-      || settings.delaySeconds <= 0)) {
+      || settings.delaySeconds < 1
+      || settings.delaySeconds > 30)) {
       return { accepted: false, code: 'FAIR_RANKING_INVALID' };
     }
     if (!settings.enabled && settings.delaySeconds !== null
       && (typeof settings.delaySeconds !== 'number'
         || !Number.isFinite(settings.delaySeconds)
-        || settings.delaySeconds <= 0)) {
+        || settings.delaySeconds < 1
+        || settings.delaySeconds > 30)) {
       return { accepted: false, code: 'FAIR_RANKING_INVALID' };
     }
     if (!this.#activity.setFairRankingSettings(settings)) return { accepted: false, code: 'FAIR_RANKING_INVALID' };
@@ -294,6 +306,24 @@ export class BuzzerResultsService {
         };
       }),
     };
+  }
+
+  /** Builds a server-owned, submission-only CSV snapshot without changing the live WebSocket projection. */
+  getCsvExportData(): readonly BuzzerCsvQuestion[] {
+    return this.#activity.questions.map((question) => ({
+      questionId: question.questionId,
+      submissions: this.#rankedSubmissions(question.questionId).map(({ value, rank }) => ({
+        groupId: value.groupId,
+        answerText: value.kind === 'GROUP'
+          ? [...value.answers]
+            .sort((left, right) => left.placeholderNumber - right.placeholderNumber)
+            .map((answer) => `（${answer.placeholderNumber}）${answer.answerText}`)
+            .join('')
+          : value.answerText,
+        rank,
+        receivedAtMs: value.receivedAtMs,
+      })),
+    }));
   }
 
   getOwnProgress(groupId: string): StudentOwnProgress {

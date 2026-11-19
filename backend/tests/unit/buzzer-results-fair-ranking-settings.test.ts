@@ -9,13 +9,13 @@ describe('fair-ranking settings', () => {
     expect(activity.fairRankingSettings).toEqual({ enabled: false, delaySeconds: null });
   });
 
-  it('accepts positive finite decimal seconds', () => {
+  it.each([1, 3, 30])('accepts a finite delay within the 1–30 second range (%s)', (delaySeconds) => {
     const activity = new ActivityState();
-    expect(activity.setFairRankingSettings({ enabled: true, delaySeconds: 0.5 })).toBe(true);
-    expect(activity.fairRankingSettings).toEqual({ enabled: true, delaySeconds: 0.5 });
+    expect(activity.setFairRankingSettings({ enabled: true, delaySeconds })).toBe(true);
+    expect(activity.fairRankingSettings).toEqual({ enabled: true, delaySeconds });
   });
 
-  it.each([null, 0, -0.5, Number.NaN, Number.POSITIVE_INFINITY])(
+  it.each([null, 0, 0.99, 30.01, -0.5, Number.NaN, Number.POSITIVE_INFINITY])(
     'rejects an enabled invalid delay without changing saved settings (%s)',
     (delaySeconds) => {
       const activity = new ActivityState();
@@ -25,10 +25,19 @@ describe('fair-ranking settings', () => {
     },
   );
 
+  it.each([0, 0.99, 30.01, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects an out-of-range disabled delay when non-null (%s)',
+    (delaySeconds) => {
+      const activity = new ActivityState();
+      expect(activity.setFairRankingSettings({ enabled: false, delaySeconds })).toBe(false);
+      expect(activity.fairRankingSettings).toEqual({ enabled: false, delaySeconds: null });
+    },
+  );
+
   it('rejects setting changes after the activity starts', () => {
     const activity = new ActivityState();
     expect(activity.advance('PREPARING', 'BUZZING').accepted).toBe(true);
-    expect(activity.setFairRankingSettings({ enabled: true, delaySeconds: 0.25 })).toBe(false);
+    expect(activity.setFairRankingSettings({ enabled: true, delaySeconds: 1.25 })).toBe(false);
     expect(activity.fairRankingSettings).toEqual({ enabled: false, delaySeconds: null });
   });
 });

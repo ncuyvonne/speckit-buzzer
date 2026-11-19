@@ -1,11 +1,11 @@
 import type { ErrorCode, FairRankingSettings, StudentResults, SubmitAnswerPayload, SubAnswer, TeacherProgress } from '../realtime/messages';
 
 export function validateFairRankingDelay(value: string): string | null {
-  if (value.trim().length === 0) return '請輸入大於 0 的有效延遲秒數。';
+  if (value.trim().length === 0) return '請輸入 1 到 30 秒之間的有效延遲。';
   const delaySeconds = Number(value);
-  return Number.isFinite(delaySeconds) && delaySeconds > 0
+  return Number.isFinite(delaySeconds) && delaySeconds >= 1 && delaySeconds <= 30
     ? null
-    : '請輸入大於 0 的有效延遲秒數。';
+    : '請輸入 1 到 30 秒之間的有效延遲。';
 }
 
 export interface OwnQuestionProgress {

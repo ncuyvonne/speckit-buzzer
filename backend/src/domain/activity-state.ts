@@ -51,9 +51,13 @@ export class ActivityState {
     if (this.#stage !== 'PREPARING' || typeof settings.enabled !== 'boolean') return false;
     if (settings.enabled && (typeof settings.delaySeconds !== 'number'
       || !Number.isFinite(settings.delaySeconds)
-      || settings.delaySeconds <= 0)) return false;
+      || settings.delaySeconds < 1
+      || settings.delaySeconds > 30)) return false;
     if (!settings.enabled && settings.delaySeconds !== null
-      && (typeof settings.delaySeconds !== 'number' || !Number.isFinite(settings.delaySeconds) || settings.delaySeconds <= 0)) {
+      && (typeof settings.delaySeconds !== 'number'
+        || !Number.isFinite(settings.delaySeconds)
+        || settings.delaySeconds < 1
+        || settings.delaySeconds > 30)) {
       return false;
     }
     this.#fairRankingSettings = Object.freeze({
@@ -67,7 +71,8 @@ export class ActivityState {
     return !this.#fairRankingSettings.enabled
       || (typeof this.#fairRankingSettings.delaySeconds === 'number'
         && Number.isFinite(this.#fairRankingSettings.delaySeconds)
-        && this.#fairRankingSettings.delaySeconds > 0);
+        && this.#fairRankingSettings.delaySeconds >= 1
+        && this.#fairRankingSettings.delaySeconds <= 30);
   }
 
   setExportAnchorState(state: ExportAnchorState): void {

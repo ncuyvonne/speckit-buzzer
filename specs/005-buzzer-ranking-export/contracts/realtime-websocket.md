@@ -10,11 +10,11 @@
 {
   "type": "buzzerResults.setFairRanking",
   "requestId": "request-id",
-  "payload": { "enabled": true, "delaySeconds": 0.5 }
+  "payload": { "enabled": true, "delaySeconds": 3 }
 }
 ```
 
-停用公平順位時，`delaySeconds` 可為 `null`。啟用時必須是有限正數。伺服器以 `buzzerResults.fairRankingConfigured` 確認設定，並於教師重新連線時提供目前設定。活動進入 `BUZZING` 後拒絕設定更新；若啟用但延遲無效，也拒絕 `PREPARING → BUZZING`。
+停用公平順位時，`delaySeconds` 通常為 `null`；若提供非空值也須為 1 到 30 秒（含端點）的有限數值。啟用時同樣必須在此範圍內，允許小數，前端初始值為 3 秒。伺服器以 `buzzerResults.fairRankingConfigured` 確認設定，並於教師重新連線時提供目前設定。活動進入 `BUZZING` 後拒絕設定更新；若啟用但延遲無效，也拒絕 `PREPARING → BUZZING`。
 
 ## Teacher progress
 

@@ -4,7 +4,7 @@ left to right direction
 
 actor 教師
 actor 學生
-component "教師活動控制" as TeacherUI
+component "教師活動控制\n（公平順位啟用時提示順位可能變動）" as TeacherUI
 component "學生作答與結果頁" as StudentUI
 component "活動服務" as ActivityService
 component "順位服務" as RankingService
@@ -24,7 +24,8 @@ StudentUI --> Visibility : 請求學生視圖
 Visibility --> ActivityData : 讀取活動結果
 Visibility --> RankingService : 讀取順位
 TeacherUI --> CsvService : 結束後匯出
-CsvService --> ActivityData : 讀取完整活動結果
+CsvService --> ActivityData : 讀取已提交答案與伺服器收到時間
 CsvService --> RankingService : 讀取完整順位
+CsvService --> CsvService : 每筆提交一列、公式前綴、CSV 逸出
 CsvService --> TeacherUI : CSV 檔案
 @enduml

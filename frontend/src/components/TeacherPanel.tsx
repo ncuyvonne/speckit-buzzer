@@ -50,12 +50,12 @@ export function TeacherPanel({
 }: TeacherPanelProps) {
   const [password, setPassword] = useState('');
   const [fairRankingEnabled, setFairRankingEnabled] = useState(fairRankingSettings.enabled);
-  const [delayText, setDelayText] = useState(fairRankingSettings.delaySeconds?.toString() ?? '');
+  const [delayText, setDelayText] = useState(fairRankingSettings.delaySeconds?.toString() ?? '3');
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
   useEffect(() => {
     setFairRankingEnabled(fairRankingSettings.enabled);
-    setDelayText(fairRankingSettings.delaySeconds?.toString() ?? '');
+    setDelayText(fairRankingSettings.delaySeconds?.toString() ?? '3');
     setSettingsError(null);
   }, [fairRankingSettings.enabled, fairRankingSettings.delaySeconds]);
 
@@ -107,7 +107,8 @@ export function TeacherPanel({
               id="fair-ranking-delay"
               name="fairRankingDelaySeconds"
               type="number"
-              min="0"
+              min="1"
+              max="30"
               step="any"
               inputMode="decimal"
               value={delayText}
@@ -134,7 +135,7 @@ export function TeacherPanel({
             {csvExport.status === 'error' && <p role="alert">{csvExport.message}</p>}
           </div>
         )}
-        <TeacherResultsPanel progress={resultsProgress} />
+        <TeacherResultsPanel progress={resultsProgress} rankingMayChange={stage === 'BUZZING' && fairRankingSettings.enabled} />
       </section>
     );
   }

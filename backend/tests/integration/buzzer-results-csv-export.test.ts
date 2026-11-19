@@ -77,6 +77,7 @@ describe('buzzer results CSV export WebSocket integration', () => {
     student.socket.send(JSON.stringify({
       type: 'buzzerResults.submitAnswer', requestId: 'answer', payload: { questionId: '1', answerText: 'winner' },
     }));
+    await student.messages.waitFor((message) => message.requestId === 'answer' && message.type === 'buzzerResults.submitted');
     const ended = teacher.messages.waitFor((message) => message.type === 'activity.phaseChanged' && message.payload.stage === 'ENDED');
     teacher.socket.send(JSON.stringify({ type: 'activity.advance', requestId: 'end', payload: { from: 'BUZZING', to: 'ENDED' } }));
     await ended;
@@ -86,7 +87,10 @@ describe('buzzer results CSV export WebSocket integration', () => {
     const csv = await teacher.messages.waitFor((message) => message.type === 'buzzerResults.csvReady');
     expect(csv.requestId).toBe('teacher-export');
     expect(csv.payload.fileName).toMatch(/\.csv$/);
-    expect(csv.payload.csvText).toContain('\uFEFF題號,成功組別');
+    expect(csv.payload.csvText).toContain('\uFEFF題號,組別,答案,搶答順位,是否搶答成功,送出時間');
+    expect(csv.payload.csvText).toMatch(/\r\n1,A,winner,1,是,\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/);
+    expect(csv.payload.csvText.split('\r\n')).toHaveLength(2);
+    expect(csv.payload.fileName).toMatch(/^buzzer-results-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}\.csv$/);
     expect((await student.messages.waitFor((message) => message.requestId === 'student-export-ended')).payload.code)
       .toBe('AUTH_REQUIRED');
     expect(student.messages.all.some((message) => message.type === 'buzzerResults.csvReady')).toBe(false);

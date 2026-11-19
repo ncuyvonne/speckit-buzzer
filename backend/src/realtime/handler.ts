@@ -2,7 +2,7 @@ import { WebSocket } from 'ws';
 import type { AppConfig } from '../config.js';
 import { ActivityState } from '../domain/activity-state.js';
 import { BuzzerResultsQueryError, BuzzerResultsService } from '../domain/buzzer-results.js';
-import { serializeBuzzerResultsCsv } from '../domain/buzzer-results-csv.js';
+import { formatBuzzerResultsLocalTimestamp, serializeBuzzerResultsCsv } from '../domain/buzzer-results-csv.js';
 import { GroupRoster } from '../domain/group-roster.js';
 import { GuidedNotesService, GuidedNotesServiceError } from '../guided-notes/service.js';
 import type { Question, QuestionLayoutSummary } from '../guided-notes/types.js';
@@ -237,16 +237,17 @@ export class RealtimeHub {
           this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
           return;
         }
-        const progress = this.#buzzerResults.getTeacherProgress();
-        if (this.#activity.questionCount === 0 || progress.questions.length === 0) {
+        const csvQuestions = this.#buzzerResults.getCsvExportData();
+        if (this.#activity.questionCount === 0 || csvQuestions.length === 0) {
           this.#sendError(context, 'RESULTS_NOT_READY', message.requestId);
           return;
         }
-        const fileName = `buzzer-results-${new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')}.csv`;
+        const fileTimestamp = formatBuzzerResultsLocalTimestamp(Date.now()).replace(' ', 'T').replaceAll(':', '-').replace('.', '-');
+        const fileName = `buzzer-results-${fileTimestamp}.csv`;
         send(context.socket, {
           type: 'buzzerResults.csvReady',
           requestId: message.requestId,
-          payload: { fileName, csvText: serializeBuzzerResultsCsv(progress) },
+          payload: { fileName, csvText: serializeBuzzerResultsCsv(csvQuestions) },
         });
         return;
       }

@@ -1,50 +1,40 @@
-import type { TeacherProgress } from './buzzer-results.js';
-import type { SubAnswer } from '../guided-notes/types.js';
+import type { BuzzerCsvQuestion } from './buzzer-results.js';
 
-const HEADER = ['題號', '成功組別', '成功答案', '組別', '組別答案', '搶答順位'] as const;
+const HEADER = ['題號', '組別', '答案', '搶答順位', '是否搶答成功', '送出時間'] as const;
 
-function answersText(answers: readonly SubAnswer[]): string {
-  return [...answers]
-    .sort((left, right) => left.placeholderNumber - right.placeholderNumber)
-    .map((answer) => `（${answer.placeholderNumber}）${answer.answerText}`)
-    .join('；');
+function pad(value: number, length = 2): string {
+  return String(value).padStart(length, '0');
+}
+
+function localTimestamp(timestampMs: number): string {
+  const date = new Date(timestampMs);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+    + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
+}
+
+export function formatBuzzerResultsLocalTimestamp(timestampMs: number): string {
+  return localTimestamp(timestampMs);
 }
 
 function csvField(value: string): string {
-  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+  const spreadsheetSafeValue = /^[=+\-@＝＋－＠\t\r\n]/u.test(value) ? `'${value}` : value;
+  return /[",\r\n]/.test(spreadsheetSafeValue)
+    ? `"${spreadsheetSafeValue.replaceAll('"', '""')}"`
+    : spreadsheetSafeValue;
 }
 
-/** Serializes the full teacher view; answer correctness and scoring are not part of this export. */
-export function serializeBuzzerResultsCsv(progress: TeacherProgress): string {
+/** Serializes accepted submissions only; answer correctness and scoring are not part of this export. */
+export function serializeBuzzerResultsCsv(questions: readonly BuzzerCsvQuestion[]): string {
   const records = [HEADER.join(',')];
-  for (const question of progress.questions) {
-    const submitted = question.groups
-      .map((group, index) => ({ group, index }))
-      .filter(({ group }) => group.submitted)
-      .sort((left, right) => (left.group.rank ?? Number.MAX_SAFE_INTEGER)
-        - (right.group.rank ?? Number.MAX_SAFE_INTEGER) || left.index - right.index);
-    const unanswered = question.groups
-      .map((group, index) => ({ group, index }))
-      .filter(({ group }) => !group.submitted)
-      .sort((left, right) => left.index - right.index);
-    const orderedGroups = [...submitted, ...unanswered].map(({ group }) => group);
-    const successfulAnswer = question.winningAnswers
-      ? answersText(question.winningAnswers)
-      : question.winningAnswer ?? '';
-
-    for (const group of orderedGroups) {
-      const groupAnswer = !group.submitted
-        ? ''
-        : group.answers
-          ? answersText(group.answers)
-          : group.answerText ?? '';
+  for (const question of questions) {
+    for (const submission of [...question.submissions].sort((left, right) => left.rank - right.rank)) {
       records.push([
         question.questionId,
-        question.winningGroupId ?? '',
-        successfulAnswer,
-        group.groupId,
-        groupAnswer,
-        group.submitted && group.rank !== null ? String(group.rank) : '',
+        submission.groupId,
+        submission.answerText,
+        String(submission.rank),
+        submission.rank === 1 ? '是' : '否',
+        localTimestamp(submission.receivedAtMs),
       ].map(csvField).join(','));
     }
   }

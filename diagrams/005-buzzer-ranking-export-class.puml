@@ -3,7 +3,8 @@ title 005 搶答公平順位與 CSV 匯出 - 類別圖
 
 class ActivitySettings {
   fairnessEnabled: Boolean
-  delayPerWin: Duration
+  delayPerWin: Duration (1..30 seconds)
+  enabledDefaultDelay: 3 seconds
   phase: ActivityPhase
 }
 
@@ -34,11 +35,11 @@ class QuestionResult {
 
 class CsvResultRow {
   questionNumber: Text
-  successfulGroup: Text
-  successfulAnswer: AnswerContent
   group: Text
-  groupAnswer: AnswerContent
+  answer: AnswerContent
   rank: Integer
+  successful: Boolean
+  receivedAt: LocalTimestamp (YYYY-MM-DD HH:MM:SS.mmm)
 }
 
 ActivitySettings "1" -- "*" Question : configures
@@ -47,4 +48,10 @@ Question "1" -- "*" AcceptedAnswer : receives
 Question "1" -- "1" QuestionResult : determines
 QuestionResult "1" o-- "*" AcceptedAnswer : orders
 QuestionResult ..> CsvResultRow : exported as
+note right of CsvResultRow
+  One row per accepted submission.
+  Omit unsubmitted groups.
+  Prefix formula-triggering cell values
+  before RFC-style CSV quoting.
+end note
 @enduml

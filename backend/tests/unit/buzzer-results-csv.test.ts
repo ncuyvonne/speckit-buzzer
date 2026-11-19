@@ -1,43 +1,81 @@
 import { describe, expect, it } from 'vitest';
-import { serializeBuzzerResultsCsv } from '../../src/domain/buzzer-results-csv.js';
-import type { TeacherProgress } from '../../src/domain/buzzer-results.js';
+import { formatBuzzerResultsLocalTimestamp, serializeBuzzerResultsCsv } from '../../src/domain/buzzer-results-csv.js';
+import { ActivityState } from '../../src/domain/activity-state.js';
+import { BuzzerResultsService, type BuzzerCsvQuestion } from '../../src/domain/buzzer-results.js';
+import { GroupRoster } from '../../src/domain/group-roster.js';
 
 describe('buzzer results CSV', () => {
-  it('writes all question/group rows, order, escaping, CRLF, and UTF-8 BOM', () => {
-    const progress: TeacherProgress = { questions: [
+  it('exports one row per submission in rank order with the required columns and local timestamp', () => {
+    const timestampMs = Date.UTC(2026, 10, 19, 12, 34, 56, 789);
+    const date = new Date(timestampMs);
+    const localTimestamp = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} `
+      + `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}.${String(date.getMilliseconds()).padStart(3, '0')}`;
+    const questions: BuzzerCsvQuestion[] = [
       {
-        questionId: '1', winningGroupId: 'B', winningAnswer: 'say "yes", go',
-        winningAnswers: null,
-        groups: [
-          { groupId: 'A', submitted: true, rank: 2, answerText: null, answers: [
-            { placeholderNumber: 1, answerText: '第一格, "引號"\r\n第二行' },
-            { placeholderNumber: 2, answerText: '第二格' },
-          ] },
-          { groupId: 'B', submitted: true, rank: 1, answerText: 'say "yes", go', answers: null },
-          { groupId: 'C', submitted: false, rank: null, answerText: null, answers: null },
+        questionId: '1',
+        submissions: [
+          { groupId: 'B', answerText: '第二順位', rank: 2, receivedAtMs: timestampMs },
+          { groupId: 'A', answerText: '（1）第一格（2）第二格', rank: 1, receivedAtMs: timestampMs },
         ],
       },
-      {
-        questionId: '2', winningGroupId: null, winningAnswer: null,
-        groups: [
-          { groupId: 'A', submitted: false, rank: null, answerText: null },
-          { groupId: 'B', submitted: false, rank: null, answerText: null },
-          { groupId: 'C', submitted: false, rank: null, answerText: null },
-        ],
-      },
-    ] };
+      { questionId: '2', submissions: [] },
+    ];
 
-    const csv = serializeBuzzerResultsCsv(progress);
+    const csv = serializeBuzzerResultsCsv(questions);
     expect(csv.startsWith('\uFEFF')).toBe(true);
     expect(csv.slice(1)).toBe([
-      '題號,成功組別,成功答案,組別,組別答案,搶答順位',
-      '1,B,"say ""yes"", go",B,"say ""yes"", go",1',
-      '1,B,"say ""yes"", go",A,"（1）第一格, ""引號""\r\n第二行；（2）第二格",2',
-      '1,B,"say ""yes"", go",C,,',
-      '2,,,A,,',
-      '2,,,B,,',
-      '2,,,C,,',
+      '題號,組別,答案,搶答順位,是否搶答成功,送出時間',
+      `1,A,（1）第一格（2）第二格,1,是,${localTimestamp}`,
+      `1,B,第二順位,2,否,${localTimestamp}`,
     ].join('\r\n'));
+    expect(formatBuzzerResultsLocalTimestamp(timestampMs)).toBe(localTimestamp);
     expect(new TextEncoder().encode(csv).slice(0, 3)).toEqual(new Uint8Array([0xef, 0xbb, 0xbf]));
+    expect(csv.slice(1).split('\r\n').some((row) => row.startsWith('2,'))).toBe(false);
+  });
+
+  it('builds submission-only export data with contiguous group answers and server receive time', () => {
+    const receivedAtMs = Date.UTC(2026, 10, 19, 12, 34, 56, 789);
+    const activity = new ActivityState();
+    activity.replaceGuidedNotesImport({ spreadsheetId: 'csv', sheetId: 1, worksheetTitle: 'Sheet' }, [{
+      kind: 'GROUP', questionId: '1', displayOrder: 1, sourceRowAtImport: 2,
+      answerSlots: [
+        { placeholderNumber: 1, sourceRowAtImport: 2 },
+        { placeholderNumber: 2, sourceRowAtImport: 3 },
+      ],
+    }]);
+    activity.advance('PREPARING', 'BUZZING');
+    const service = new BuzzerResultsService({ activity, roster: new GroupRoster(['A', 'B']), now: () => receivedAtMs });
+    service.submitAnswer('A', '1', [
+      { placeholderNumber: 1, answerText: '第一格' },
+      { placeholderNumber: 2, answerText: '第二格' },
+    ]);
+
+    expect(service.getCsvExportData()).toEqual([{
+      questionId: '1',
+      submissions: [{
+        groupId: 'A', answerText: '（1）第一格（2）第二格', rank: 1, receivedAtMs,
+      }],
+    }]);
+  });
+
+  it.each(['=SUM(1,2)', '+1', '-1', '@name', '＝1+1', '＋1', '－1', '＠name', '\t=1+1', '\r=1+1', '\n=1+1'])(
+    'prefixes spreadsheet formula trigger %j before CSV escaping',
+    (answerText) => {
+      const csv = serializeBuzzerResultsCsv([{
+        questionId: '1',
+        submissions: [{ groupId: 'A', answerText, rank: 1, receivedAtMs: 0 }],
+      }]);
+
+      expect(csv.slice(1)).toContain(`'${answerText}`);
+    },
+  );
+
+  it('sanitizes a formula answer that also contains commas, quotes, and newlines', () => {
+    const csv = serializeBuzzerResultsCsv([{
+      questionId: '1',
+      submissions: [{ groupId: 'A', answerText: '=SUM("a", "b")\r\nnext', rank: 1, receivedAtMs: 0 }],
+    }]);
+
+    expect(csv.slice(1)).toContain('1,A,"\'=SUM(""a"", ""b"")\r\nnext",1,是,');
   });
 });

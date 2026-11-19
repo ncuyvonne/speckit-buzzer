@@ -39,7 +39,7 @@ describe('fair ranking', () => {
 
   it('adds K times the configured decimal delay using other-question wins at acceptance', () => {
     const times = [1_000, 1_001, 2_000, 1_750];
-    const { service } = createSystem(() => times.shift()!, ['1', '2', '3'], { enabled: true, delaySeconds: 0.25 });
+    const { service } = createSystem(() => times.shift()!, ['1', '2', '3'], { enabled: true, delaySeconds: 1.25 });
 
     service.submitAnswer('A', '1', 'A wins one');
     service.submitAnswer('A', '2', 'A wins two');
@@ -49,7 +49,7 @@ describe('fair ranking', () => {
     expect(service.getSubmission('A', '3')).toMatchObject({
       receivedAtMs: 1_750,
       priorWinCountSnapshot: 2,
-      effectiveAtMs: 2_250,
+      effectiveAtMs: 4_250,
     });
     expect(service.getTeacherProgress().questions[2]).toMatchObject({
       winningGroupId: 'B',
@@ -63,7 +63,7 @@ describe('fair ranking', () => {
 
   it('keeps an accepted answer snapshot when another question winner later changes', () => {
     const times = [100, 200, 50];
-    const { service } = createSystem(() => times.shift()!, ['1', '2'], { enabled: true, delaySeconds: 0.5 });
+    const { service } = createSystem(() => times.shift()!, ['1', '2'], { enabled: true, delaySeconds: 1.5 });
 
     service.submitAnswer('A', '1', 'initial winner');
     service.submitAnswer('A', '2', 'snapshot answer');
@@ -72,13 +72,13 @@ describe('fair ranking', () => {
     expect(service.getWinner('1')?.groupId).toBe('B');
     expect(service.getSubmission('A', '2')).toMatchObject({
       priorWinCountSnapshot: 1,
-      effectiveAtMs: 700,
+      effectiveAtMs: 1_700,
     });
   });
 
   it('uses accepted order to break equal effective times and produces contiguous ranks', () => {
-    const times = [10, 100, 200];
-    const { service } = createSystem(() => times.shift()!, ['1', '2', '3'], { enabled: true, delaySeconds: 0.1 });
+    const times = [10, 100, 1_350];
+    const { service } = createSystem(() => times.shift()!, ['1', '2', '3'], { enabled: true, delaySeconds: 1.25 });
 
     service.submitAnswer('A', '1', 'prior win');
     service.submitAnswer('A', '3', 'effective 200');

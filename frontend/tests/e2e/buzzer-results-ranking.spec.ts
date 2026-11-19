@@ -81,6 +81,7 @@ base('fairness on: a prior winner receives the configured effective-time delay',
 
   try {
     await teacher.getByRole('button', { name: '開始搶答' }).click();
+    await expect(teacher.getByText('公平順位啟用中；後續提交可能使目前成功組別與順位改變。')).toBeVisible();
     await firstStudent.getByLabel('題目').selectOption('1');
     await firstStudent.getByLabel('答案').fill('先取得成功題');
     await firstStudent.getByRole('button', { name: '送出答案' }).click();

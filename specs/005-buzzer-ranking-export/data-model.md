@@ -9,7 +9,7 @@
 | Field | Type | Rules |
 |---|---|---|
 | `enabled` | boolean | 新活動預設 `false`；只允許老師在 `PREPARING` 設定。 |
-| `delaySeconds` | finite number or null | 啟用時為正秒數，可為小數；停用時可為 `null`。 |
+| `delaySeconds` | finite number or null | 啟用時為 1–30 秒（含端點），可為小數；停用時為 `null`，或非空時也須在相同範圍。啟用欄位預填 3 秒。 |
 | `frozenAtStart` | boolean／derived lifecycle state | 活動進入 `BUZZING` 後不得再修改設定；其後答案沿用同一規則。 |
 
 ### AcceptedAnswer（組別有效答案）
@@ -39,16 +39,16 @@
 
 ### CsvResultRow（CSV 列）
 
-每個題目／組別組合一列，欄位順序如下：
+每筆已接受提交一列，欄位順序如下：
 
 1. `題號`
-2. `成功組別`
-3. `成功答案`
-4. `組別`
-5. `組別答案`
-6. `搶答順位`
+2. `組別`
+3. `答案`
+4. `搶答順位`
+5. `是否搶答成功`（順位 1 為「是」，其餘為「否」）
+6. `送出時間`（伺服器本機時間 `YYYY-MM-DD HH:MM:SS.mmm`）
 
-題組的完整子答案放在 `組別答案` 一格內，依子題編號順序呈現；未作答列的組別答案和順位留空。成功資訊及題號在同一題的組別列重複。CSV 的實際標頭、編碼及逸出見 [csv-export.md](./contracts/csv-export.md)。
+未提交組別不輸出資料列；無提交的題目也不輸出空白列。題組答案依子題編號遞增連續串接，例如 `（1）答案一（2）答案二`。CSV 的實際標頭、編碼及逸出見 [csv-export.md](./contracts/csv-export.md)。
 
 ## State and Validation Rules
 

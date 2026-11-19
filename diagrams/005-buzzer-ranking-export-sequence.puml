@@ -27,6 +27,9 @@ Activity --> 學生 : 僅回傳本組進度
 Visibility -> Ranking : 取得完整順位
 Visibility --> 學生 : 所有順位、成功答案、本組答案
 教師 -> CSV : 匯出活動結果
-CSV -> Ranking : 取得各題所有組別順位
-CSV --> 教師 : 題目／組別明細 CSV
+CSV -> Ranking : 取得每題已接受提交與順位
+CSV -> CSV : 每筆提交一列；題組答案連續串接
+CSV -> CSV : 加公式前綴並逸出 CSV 欄位
+CSV -> CSV : receivedAtMs 轉伺服器本機毫秒時間
+CSV --> 教師 : 題號、組別、答案、順位、成功狀態、時間
 @enduml

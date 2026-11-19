@@ -29,19 +29,19 @@
 
 ## Phase 3: User Story 1 - 老師設定公平順位 (Priority: P1)
 
-**Goal**: Let a teacher configure the fair-ranking switch and positive decimal delay during `PREPARING`; default to disabled and freeze settings when the activity starts.
+**Goal**: Let a teacher configure the fair-ranking switch and a 1–30 second decimal delay during `PREPARING`; default to disabled with the enabled input prefilled as 3 seconds, and freeze settings when the activity starts.
 
-**Independent Test**: Create activities with default-off, enabled-valid, and enabled-invalid settings. Verify default-off preserves received order, a positive finite decimal delay is accepted, blank/zero/negative/non-numeric values prevent start, and changes after start are rejected.
+**Independent Test**: Create activities with default-off, enabled-valid, and enabled-invalid settings. Verify default-off preserves received order, values in the inclusive 1–30 range are accepted, out-of-range/non-numeric values prevent start, and changes after start are rejected.
 
 ### Tests for User Story 1
 
-- [x] T004 [P] [US1] Test default settings, positive finite decimal validation, disabled `null` delay, and rejection of blank/zero/negative/non-finite delay in `backend/tests/unit/buzzer-results-fair-ranking-settings.test.ts`.
+- [x] T004 [P] [US1] Test default settings, 1/3/30 second boundaries, disabled `null` delay, and rejection of out-of-range/non-finite enabled and non-null disabled delays in `backend/tests/unit/buzzer-results-fair-ranking-settings.test.ts`.
 - [x] T005 [P] [US1] Test teacher-only setting updates, `PREPARING`-only updates, invalid-setting rejection without state mutation, and frozen settings after `BUZZING` in `backend/tests/integration/buzzer-results-fair-ranking-settings.test.ts`.
 - [x] T006 [P] [US1] Test the frontend settings request, default-off state, and validation-error presentation in `frontend/tests/unit/buzzer-results-fair-ranking-settings.test.ts`.
 
 ### Implementation for User Story 1
 
-- [x] T007 [P] [US1] Add fair-ranking state and lifecycle validation in `backend/src/domain/activity-state.ts` and `backend/src/domain/buzzer-results.ts`: `enabled` defaults to `false`; enabled `delaySeconds` must be finite and greater than zero, may be decimal seconds, and settings cannot change after transition to `BUZZING`.
+- [x] T007 [P] [US1] Add fair-ranking state and lifecycle validation in `backend/src/domain/activity-state.ts` and `backend/src/domain/buzzer-results.ts`: `enabled` defaults to `false`; enabled `delaySeconds` must be finite and within 1–30 seconds, may be decimal seconds, and settings cannot change after transition to `BUZZING`.
 - [x] T008 [US1] Handle `buzzerResults.setFairRanking` in `backend/src/realtime/handler.ts`, authorize the teacher, accept updates only in `PREPARING`, return the configured state, and reject invalid settings or post-start changes with actionable errors.
 - [x] T009 [P] [US1] Add settings request/ack handling and fair-ranking settings state to `frontend/src/realtime/client.ts` and `frontend/src/state/buzzer-results.ts`.
 - [x] T010 [US1] Add the default-off toggle, decimal-seconds input, validation feedback, and preparing-stage save flow to `frontend/src/components/TeacherPanel.tsx`.
@@ -99,19 +99,19 @@
 
 ## Phase 6: User Story 4 - 老師匯出活動順位 CSV (Priority: P1)
 
-**Goal**: Allow an authenticated teacher to download complete results after the activity ends, with one row per question/group and Excel-compatible Traditional Chinese encoding.
+**Goal**: Allow an authenticated teacher to download complete results after the activity ends, with one row per accepted submission and Excel-compatible Traditional Chinese encoding.
 
-**Independent Test**: Export a completed activity with multiple questions, submitted and unsubmitted groups, group answers, and CSV-special characters. Verify row coverage/order, all six columns, blank unanswered cells, escaping, CRLF, and UTF-8 BOM; verify unauthorized, premature, and not-ready requests return errors without a partial file.
+**Independent Test**: Export a completed activity with multiple questions, submitted and unsubmitted groups, group answers, and CSV-special characters. Verify one row per submission in question/rank order, all six columns, no unsubmitted rows, formula-prefix neutralization, local timestamps, escaping, CRLF, and UTF-8 BOM; verify unauthorized, premature, and not-ready requests return errors without a partial file.
 
 ### Tests for User Story 4
 
-- [x] T026 [P] [US4] Test CSV headers, question/group row coverage, rank ordering, blank unanswered fields, and a question with no submissions (all groups still have rows and winner/group answer/rank fields are blank); also test ordered subanswers, comma/quote/CR/LF escaping, CRLF records, and `EF BB BF` prefix in `backend/tests/unit/buzzer-results-csv.test.ts`.
+- [x] T026 [P] [US4] Test exact CSV headers, one row per submission, rank ordering, omitted unsubmitted groups/questions, contiguous ordered subanswers, server-local millisecond timestamps, formula-trigger prefix handling (including comma/quote/newline combinations), CRLF records, and `EF BB BF` prefix in `backend/tests/unit/buzzer-results-csv.test.ts`.
 - [x] T027 [P] [US4] Test teacher authorization, `ENDED` and result-readiness guards, and requester-only CSV response over WebSocket in `backend/tests/integration/buzzer-results-csv-export.test.ts`.
-- [x] T028 [P] [US4] Test the teacher CSV download and inspect its rows, BOM, Traditional Chinese headers, and unanswered rows in `frontend/tests/e2e/buzzer-results-csv-export.spec.ts`.
+- [x] T028 [P] [US4] Test the teacher CSV download and inspect its single submitted row, omitted unsubmitted rows, BOM, Traditional Chinese headers, and local timestamp format in `frontend/tests/e2e/buzzer-results-csv-export.spec.ts`.
 
 ### Implementation for User Story 4
 
-- [x] T029 [P] [US4] Implement CSV row construction and serialization in `backend/src/domain/buzzer-results-csv.ts` with header order `題號,成功組別,成功答案,組別,組別答案,搶答順位`, question order, ranked submitted groups followed by unsubmitted groups, ordered subanswers, standard quoting, CRLF, and UTF-8 BOM; when a question has no submissions, emit every group row with winner, answer, and rank fields blank.
+- [x] T029 [P] [US4] Implement submission-only CSV construction in `backend/src/domain/buzzer-results.ts` and serialization in `backend/src/domain/buzzer-results-csv.ts` with header order `題號,組別,答案,搶答順位,是否搶答成功,送出時間`, question/rank order, contiguous ordered subanswers, local timestamp formatting, formula-trigger apostrophe prefix, standard quoting, CRLF, and UTF-8 BOM.
 - [x] T030 [US4] Handle `buzzerResults.exportCsv` in `backend/src/realtime/handler.ts`; allow only the authenticated teacher after `ENDED` when results are ready, return the CSV only to the requester, and return a clear error without partial CSV otherwise.
 - [x] T031 [P] [US4] Handle the CSV-ready response in `frontend/src/realtime/client.ts` and download `csvText` using a `text/csv;charset=utf-8` Blob and the server-provided filename.
 - [x] T032 [US4] Add the results-ready export control and download/error states to `frontend/src/components/TeacherPanel.tsx`.
@@ -128,6 +128,13 @@
 - [x] T034 [P] [Constitution VII] Compare service responsibilities, data fields, role visibility, and message flow with `diagrams/005-buzzer-ranking-export-component.puml`, `diagrams/005-buzzer-ranking-export-class.puml`, and `diagrams/005-buzzer-ranking-export-sequence.puml`; update any mismatched `.puml` and its matching `.png`, regenerating PNGs with the PlantUML CLI.
 - [x] T035 [Constitution III] Run and record `npm run test --workspace @speckit-buzzer/backend`, `npm run test --workspace @speckit-buzzer/frontend`, `npm run test:e2e`, `npm run typecheck`, and `npm run build` from `package.json`, `backend/package.json`, and `frontend/package.json`; report actual commands and outcomes without marking unrun checks as passed.
 - [ ] T036 [Constitution VI] Open the Feature 005 PR from `codex/005-buzzer-ranking-export` to `codex/004-question-groups` while PR #4 remains open; include scope, actual test evidence, and limitations, obtain review before merging, and after PR #4 merges rebase/retarget Feature 005 to the integrated revision per `.specify/memory/constitution.md` and `specs/005-buzzer-ranking-export/plan.md`.
+
+## PR Review Corrections
+
+- [x] T037 Neutralize spreadsheet formula-trigger prefixes in every CSV data field and cover formula prefixes plus delimiter/quote/newline combinations.
+- [x] T038 Align the CSV contract, data model, serializer, and acceptance tests to one row per accepted submission with the six requested columns, local received time, and contiguous question-group answers.
+- [x] T039 Bound fair-ranking delay to 1–30 seconds for enabled and supplied disabled values, prefill 3 seconds when enabled, and show the teacher that live ranks may change.
+- [x] T040 Reconcile all Feature 005 PlantUML sources and regenerate/inspect the matching PNGs; record complete test, typecheck, and build outcomes after review fixes.
 
 ---
 

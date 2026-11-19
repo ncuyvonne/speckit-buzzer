@@ -2,14 +2,15 @@
 
 ## File format
 
-- Encoding: UTF-8 with BOM (`EF BB BF` at the start of the file), so Windows Excel directly displays Traditional Chinese.
+- Encoding: UTF-8 with BOM (`EF BB BF` at the start of the file), so Windows Excel can display Traditional Chinese.
 - Record separator: CRLF.
-- Header order: `題號,成功組別,成功答案,組別,組別答案,搶答順位`.
-- Each row represents one question and one configured group. Question rows follow the imported question order; submitted groups follow rank order; unsubmitted groups follow submitted rows.
-- The successful group and successful answer are repeated on each row for that question. If no group submitted, these fields are empty.
-- An unsubmitted group's answer and rank are empty. It still has a row.
-- A question group is rendered in the single `組別答案` cell in ascending subquestion order, with the corresponding subquestion labels.
-- Every field containing a comma, quote, CR, or LF is double-quoted; internal double quotes are doubled per CSV escaping rules.
+- Header order: `題號,組別,答案,搶答順位,是否搶答成功,送出時間`.
+- Each row represents one accepted submission. Questions follow imported question order; submitted groups follow final rank order. Unsubmitted groups are omitted. A question with no submissions contributes no data row.
+- `是否搶答成功` is `是` for rank 1 and `否` for every later rank.
+- Single-question answers preserve the accepted answer. Group answers use ascending subquestion number and concatenate without extra separators, for example `（1）答案一（2）答案二`.
+- `送出時間` is the server-local time derived from the accepted submission's `receivedAtMs`, formatted `YYYY-MM-DD HH:MM:SS.mmm`.
+- Before CSV quoting, a data cell starting with `=`, `+`, `-`, `@`, their full-width variants `＝`, `＋`, `－`, `＠`, Tab, CR, or LF is prefixed with an apostrophe to reduce spreadsheet formula interpretation risk. The apostrophe is part of the exported cell value.
+- Every field containing a comma, quote, CR, or LF is double-quoted; internal double quotes are doubled per CSV escaping rules. Formula-prefix handling occurs before this quoting.
 
 ## Authorization and timing
 
