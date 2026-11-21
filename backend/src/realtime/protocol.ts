@@ -77,7 +77,7 @@ const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   ANSWER_LOCKED: '本組此題答案已送出並鎖定，無法再次修改。',
   GROUP_ANSWER_INCOMPLETE: '題組尚未填完；請補齊所有子題答案後再送出。',
   GROUP_ANSWER_INVALID: '題組答案編號與題目不符；請檢查各子題後再送出。',
-  FAIR_RANKING_INVALID: '公平順位設定無效；請在活動開始前設定大於 0 的有限延遲秒數。',
+  FAIR_RANKING_INVALID: '公平順位延遲必須介於 1 到 30 秒（含端點），請修正設定後再試。',
   RESULTS_NOT_READY: '活動結果尚未就緒，請稍後再試；目前不會產生 CSV。',
   SHEET_WRITE_FAILED: '試算表拒絕寫入，資料未變更；請檢查編輯權限或受保護儲存格。',
   SHEET_WRITE_UNCONFIRMED: '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',

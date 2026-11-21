@@ -79,7 +79,13 @@ describe('fair-ranking settings WebSocket integration', () => {
         payload: { enabled, delaySeconds },
       }));
       expect(await teacher.messages.waitFor((message) => message.requestId === requestId))
-        .toMatchObject({ type: 'error', payload: { code: 'FAIR_RANKING_INVALID' } });
+        .toMatchObject({
+          type: 'error',
+          payload: {
+            code: 'FAIR_RANKING_INVALID',
+            message: '公平順位延遲必須介於 1 到 30 秒（含端點），請修正設定後再試。',
+          },
+        });
     }
     expect(app.activity.fairRankingSettings).toEqual({ enabled: false, delaySeconds: null });
 

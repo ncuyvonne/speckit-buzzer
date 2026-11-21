@@ -199,3 +199,9 @@ Each story has its own tests and checkpoint. Do not begin CSV or ended-result in
 ## Phase 8: Convergence
 
 - [x] T041 Extend the SC-006 Playwright check in `frontend/tests/e2e/buzzer-results-ranking.spec.ts` to assert the teacher-visible successful group within the same 2-second window as each rank update, and include the winner in each latency measurement attachment per SC-006 and T013 (partial).
+
+---
+
+## Phase 9: Convergence
+
+- [x] T042 Replace the `FAIR_RANKING_INVALID` message in `backend/src/realtime/protocol.ts` with guidance stating the inclusive 1–30 second range, and assert that actionable message in `backend/tests/integration/buzzer-results-fair-ranking-settings.test.ts` per FR-017 and Constitution I.
