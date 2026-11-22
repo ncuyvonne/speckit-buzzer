@@ -402,6 +402,7 @@ export class RealtimeClient {
       && isStringArray(payload.questionIds)) {
       const layouts = questionLayoutsFor(payload.questionIds, payload.questionLayouts);
       if (layouts === null) return;
+      this.buzzerResults.clearSession();
       this.buzzerResults.applyQuestionList(payload.questionIds);
       this.store.applyQuestionList(payload.questionIds, layouts);
       return;
@@ -553,6 +554,8 @@ export class RealtimeClient {
       const layouts = questionLayoutsFor(payload.questionIds, payload.questionLayouts);
       if (layouts === null) return;
       this.store.applyGuidedNotesImport(payload.worksheetTitle, payload.questionIds, layouts);
+      this.buzzerResults.clearSession();
+      this.buzzerResults.applyQuestionList(payload.questionIds);
       return;
     }
     if (

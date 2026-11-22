@@ -329,4 +329,74 @@ describe('RealtimeClient group binding errors', () => {
       { placeholderNumber: 2, answerText: 'A2' },
     ]);
   });
+
+  it('resets the teacher time limit and clears cached results after a successful import', () => {
+    vi.stubGlobal('WebSocket', { OPEN: 1, CLOSING: 2 });
+    const socket = new FakeWebSocket();
+    const client = new RealtimeClient({
+      studentSelection: createInMemoryStudentSelection(),
+      location: { protocol: 'http:', host: 'localhost' },
+      createSocket: () => socket as unknown as WebSocket,
+    });
+    client.connect();
+    socket.open();
+    socket.receive({ type: 'teacher.authenticated', requestId: 'teacher', payload: { ok: true } });
+    client.store.update({ stage: 'PREPARING', timeLimitSeconds: 45, remainingSeconds: null });
+    client.buzzerResults.applyQuestionList(['old-question']);
+    client.buzzerResults.applyAccepted('old-question', 'old answer');
+    client.buzzerResults.applyTeacherProgress({ questions: [{
+      questionId: 'old-question',
+      groups: [],
+      winningGroupId: 'old-group',
+      winningAnswer: 'old answer',
+      judgement: 'CORRECT',
+    }] });
+    client.buzzerResults.applyScoreboard([{ rank: 1, groupId: 'old-group', score: 1, successfulQuestionCount: 1 }]);
+
+    socket.receive({
+      type: 'guidedNotes.imported',
+      requestId: 'import',
+      payload: { worksheetTitle: '新工作表', questionIds: ['new-question'], questionCount: 1 },
+    });
+
+    expect(client.store.getSnapshot()).toMatchObject({
+      worksheetTitle: '新工作表',
+      questionIds: ['new-question'],
+      questionCount: 1,
+      timeLimitSeconds: 0,
+      remainingSeconds: null,
+    });
+    expect(client.buzzerResults.getSnapshot()).toMatchObject({
+      questionIds: ['new-question'],
+      ownProgress: [],
+      acceptedSubmission: null,
+      teacherProgress: null,
+      scoreboard: null,
+      submittedCount: 0,
+    });
+  });
+
+  it('clears a student’s cached results when a successful import sends the new question list', () => {
+    const { client, socket } = createConnectedStudent();
+    client.buzzerResults.applyQuestionList(['old-question']);
+    client.buzzerResults.applyOwnProgress([{
+      questionId: 'old-question', submitted: true, answerText: 'old answer', locked: true,
+    }], 1, 1);
+    client.buzzerResults.applyStudentResults({ questions: [] });
+    client.buzzerResults.applyScoreboard([{ rank: 1, groupId: 'old-group', score: 1, successfulQuestionCount: 1 }]);
+
+    socket.receive({
+      type: 'buzzerResults.questionList',
+      payload: { questionIds: ['new-question'] },
+    });
+
+    expect(client.buzzerResults.getSnapshot()).toMatchObject({
+      questionIds: ['new-question'],
+      ownProgress: [],
+      studentResults: null,
+      scoreboard: null,
+      submittedCount: 0,
+      totalQuestionCount: 1,
+    });
+  });
 });

@@ -91,7 +91,18 @@ export class ActivityStore {
     questionIds: readonly string[],
     questionLayouts?: readonly QuestionLayoutSummary[],
   ): void {
-    this.applyGuidedNotesSnapshot(worksheetTitle, questionIds, questionLayouts);
+    const ids = [...questionIds];
+    this.update({
+      worksheetTitle,
+      questionIds: Object.freeze(ids),
+      questionLayouts: this.#normalizeQuestionLayouts(ids, questionLayouts),
+      questionCount: ids.length,
+      timeLimitSeconds: 0,
+      remainingSeconds: null,
+      guidedNotesBusy: false,
+      guidedNotesError: null,
+      guidedNotesExportResult: null,
+    });
   }
 
   applyQuestionList(questionIds: readonly string[], questionLayouts?: readonly QuestionLayoutSummary[]): void {

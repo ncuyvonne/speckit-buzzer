@@ -205,3 +205,7 @@ US3 projection/types: T040 and T042 (backend domain / frontend message types)
 - Tests are included because the spec and constitution require normal and boundary coverage; this task generation did not execute them.
 - All runtime state remains in process memory as specified by `plan.md`; do not add SQLite or expose Google Sheets credentials to the browser.
 - Follow the server authority, role projections, deadline equality rule, and manual-only correctness rule from the Feature 006 contracts.
+
+## Phase 7: Convergence
+
+- [X] T049 [US2] On successful worksheet import, synchronize the frontend time limit to 0 and clear cached answer, judgment, and scoreboard state; add regression coverage for importing after a nonzero preparing-stage limit per FR-014 and SC-006 (partial).

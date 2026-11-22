@@ -55,7 +55,7 @@ deadline 邊界、計時回呼與手動結束競態、改標／取消及平手�
 
 | 命令 | 結果 |
 |---|---|
-| `npm run test` | 退出碼 0；基於最新 main 的前端 6 個測試檔、31 個測試通過；後端 37 個測試檔、219 個測試通過。整合測試需允許 loopback WebSocket 連線。 |
+| `npm run test` | 退出碼 0；基於最新 main 的前端 6 個測試檔、33 個測試通過（含匯入後前端狀態清除回歸測試）；後端 37 個測試檔、219 個測試通過。整合測試需允許 loopback WebSocket 連線。 |
 | `npm run test:e2e` | 退出碼 0；Playwright 48/48 通過。合併 004/005 後，將兩處受倒數狀態影響的連線測試改為精確文字定位，再完整重跑通過。 |
 | `npm run typecheck` | 退出碼 0；前後端 TypeScript 檢查通過。 |
 | `npm run build` | 退出碼 0；Vite 前端產物及後端 TypeScript 編譯通過。 |
