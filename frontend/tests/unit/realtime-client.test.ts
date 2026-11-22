@@ -269,7 +269,7 @@ describe('RealtimeClient group binding errors', () => {
     teacherSocket.receive({ type: 'teacher.authenticated', requestId: 'teacher', payload: { ok: true } });
     teacherSocket.receive({ type: 'buzzerResults.teacherProgress', payload: { questions: [{
       questionId: 'G',
-      groups: [{ groupId: 'A', submitted: true, answerText: null, answers: [
+      groups: [{ groupId: 'A', submitted: true, rank: 1, answerText: null, answers: [
         { placeholderNumber: 1, answerText: 'A1' },
         { placeholderNumber: 2, answerText: 'A2' },
       ] }],
@@ -322,6 +322,7 @@ describe('RealtimeClient group binding errors', () => {
       ],
       ownStatus: 'SUBMITTED',
       ownGroupWon: true,
+      groups: [{ groupId: 'A', submitted: true, rank: 1 }],
     }] } });
     expect(student.buzzerResults.getSnapshot().studentResults?.questions[0]?.ownAnswers).toEqual([
       { placeholderNumber: 1, answerText: 'A1' },

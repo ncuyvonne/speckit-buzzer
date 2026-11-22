@@ -1,10 +1,16 @@
-import type { ActivityState } from './activity-state.js';
+import type { ActivityState, FairRankingSettings } from './activity-state.js';
 import type { GroupRoster } from './group-roster.js';
 import type { SubAnswer } from '../guided-notes/types.js';
+import { rankAcceptedAnswers } from './fair-ranking.js';
 
 export interface AcceptedSubmissionFields {
   readonly groupId: string;
   readonly questionId: string;
+  readonly acceptedOrder: number;
+  readonly receivedAtMs: number;
+  readonly priorWinCountSnapshot: number;
+  readonly effectiveAtMs: number;
+  /** Compatibility aliases retained for existing internal consumers. */
   readonly receivedOrder: number;
   readonly acceptedAt: number;
   readonly locked: boolean;
@@ -29,6 +35,8 @@ export type GroupSubmission = AcceptedAnswerSubmission;
 export type BuzzerResultsErrorCode =
   | 'STAGE_CONFLICT'
   | 'GROUP_INVALID'
+  | 'FAIR_RANKING_INVALID'
+  | 'RESULTS_NOT_READY'
   | 'QUESTION_INVALID'
   | 'ANSWER_EMPTY'
   | 'ANSWER_LOCKED'
@@ -44,6 +52,7 @@ export interface TeacherQuestionProgress {
   readonly groups: readonly {
     readonly groupId: string;
     readonly submitted: boolean;
+    readonly rank: number | null;
     readonly answerText: string | null;
     readonly answers?: readonly SubAnswer[] | null;
   }[];
@@ -56,6 +65,16 @@ export interface TeacherProgress {
   readonly questions: readonly TeacherQuestionProgress[];
 }
 
+export interface BuzzerCsvQuestion {
+  readonly questionId: string;
+  readonly submissions: readonly {
+    readonly groupId: string;
+    readonly answerText: string;
+    readonly rank: number;
+    readonly receivedAtMs: number;
+  }[];
+}
+
 export interface StudentQuestionResult {
   readonly questionId: string;
   readonly winningGroupId: string | null;
@@ -65,6 +84,11 @@ export interface StudentQuestionResult {
   readonly winningAnswers?: readonly SubAnswer[] | null;
   readonly ownStatus: 'SUBMITTED' | 'NOT_SUBMITTED';
   readonly ownGroupWon: boolean;
+  readonly groups: readonly {
+    readonly groupId: string;
+    readonly submitted: boolean;
+    readonly rank: number | null;
+  }[];
 }
 
 export interface StudentResults {
@@ -94,6 +118,10 @@ export interface BuzzerResultsServiceOptions {
   readonly now?: () => number;
 }
 
+export type FairRankingSettingsResult =
+  | { readonly accepted: true; readonly settings: FairRankingSettings }
+  | { readonly accepted: false; readonly code: 'STAGE_CONFLICT' | 'FAIR_RANKING_INVALID' };
+
 function submissionKey(groupId: string, questionId: string): string {
   return JSON.stringify([groupId, questionId]);
 }
@@ -104,13 +132,35 @@ export class BuzzerResultsService {
   readonly #roster: GroupRoster;
   readonly #now: () => number;
   readonly #submissions = new Map<string, AcceptedAnswerSubmission>();
-  readonly #winners = new Map<string, AcceptedAnswerSubmission>();
   #nextReceivedOrder = 1;
 
   constructor(options: BuzzerResultsServiceOptions) {
     this.#activity = options.activity;
     this.#roster = options.roster;
     this.#now = options.now ?? Date.now;
+  }
+
+  getFairRankingSettings(): FairRankingSettings {
+    return this.#activity.fairRankingSettings;
+  }
+
+  setFairRankingSettings(settings: FairRankingSettings): FairRankingSettingsResult {
+    if (this.#activity.stage !== 'PREPARING') return { accepted: false, code: 'STAGE_CONFLICT' };
+    if (settings.enabled && (typeof settings.delaySeconds !== 'number'
+      || !Number.isFinite(settings.delaySeconds)
+      || settings.delaySeconds < 1
+      || settings.delaySeconds > 30)) {
+      return { accepted: false, code: 'FAIR_RANKING_INVALID' };
+    }
+    if (!settings.enabled && settings.delaySeconds !== null
+      && (typeof settings.delaySeconds !== 'number'
+        || !Number.isFinite(settings.delaySeconds)
+        || settings.delaySeconds < 1
+        || settings.delaySeconds > 30)) {
+      return { accepted: false, code: 'FAIR_RANKING_INVALID' };
+    }
+    if (!this.#activity.setFairRankingSettings(settings)) return { accepted: false, code: 'FAIR_RANKING_INVALID' };
+    return { accepted: true, settings: this.#activity.fairRankingSettings };
   }
 
   /**
@@ -187,17 +237,26 @@ export class BuzzerResultsService {
     const key = submissionKey(groupId, questionId);
     if (this.#submissions.has(key)) return { accepted: false, code: 'ANSWER_LOCKED' };
 
+    const receivedAtMs = this.#now();
+    const acceptedOrder = this.#nextReceivedOrder;
+    const priorWinCountSnapshot = this.#countCurrentWins(groupId, questionId);
+    const settings = this.#activity.fairRankingSettings;
+    const delayMs = settings.enabled ? (settings.delaySeconds ?? 0) * 1_000 : 0;
+    const effectiveAtMs = receivedAtMs + priorWinCountSnapshot * delayMs;
     const base = {
       groupId,
       questionId,
-      receivedOrder: this.#nextReceivedOrder,
-      acceptedAt: this.#now(),
+      acceptedOrder,
+      receivedAtMs,
+      priorWinCountSnapshot,
+      effectiveAtMs,
+      receivedOrder: acceptedOrder,
+      acceptedAt: receivedAtMs,
       locked: true,
     };
     const submission = Object.freeze({ ...base, ...submissionFields }) as AcceptedAnswerSubmission;
     this.#nextReceivedOrder += 1;
     this.#submissions.set(key, submission);
-    if (!this.#winners.has(questionId)) this.#winners.set(questionId, submission);
     return { accepted: true, submission };
   }
 
@@ -206,13 +265,27 @@ export class BuzzerResultsService {
   }
 
   getWinner(questionId: string): AcceptedAnswerSubmission | null {
-    return this.#winners.get(questionId) ?? null;
+    return this.#rankedSubmissions(questionId)[0]?.value ?? null;
+  }
+
+  #rankedSubmissions(questionId: string) {
+    return rankAcceptedAnswers([...this.#submissions.values()].filter((submission) => submission.questionId === questionId));
+  }
+
+  #countCurrentWins(groupId: string, exceptQuestionId: string): number {
+    let count = 0;
+    for (const question of this.#activity.questions) {
+      if (question.questionId !== exceptQuestionId && this.getWinner(question.questionId)?.groupId === groupId) count += 1;
+    }
+    return count;
   }
 
   getTeacherProgress(): TeacherProgress {
     return {
       questions: this.#activity.questions.map((question) => {
-        const winner = this.#winners.get(question.questionId) ?? null;
+        const ranked = this.#rankedSubmissions(question.questionId);
+        const ranks = new Map(ranked.map(({ value, rank }) => [value.groupId, rank]));
+        const winner = ranked[0]?.value ?? null;
         return {
           questionId: question.questionId,
           groups: this.#roster.ids.map((groupId) => {
@@ -220,6 +293,7 @@ export class BuzzerResultsService {
             return {
               groupId,
               submitted: submission !== null,
+              rank: ranks.get(groupId) ?? null,
               answerText: question.kind !== 'GROUP' && submission?.kind !== 'GROUP' ? submission?.answerText ?? null : null,
               ...(question.kind === 'GROUP'
                 ? { answers: submission?.kind === 'GROUP' ? submission.answers : null }
@@ -232,6 +306,24 @@ export class BuzzerResultsService {
         };
       }),
     };
+  }
+
+  /** Builds a server-owned, submission-only CSV snapshot without changing the live WebSocket projection. */
+  getCsvExportData(): readonly BuzzerCsvQuestion[] {
+    return this.#activity.questions.map((question) => ({
+      questionId: question.questionId,
+      submissions: this.#rankedSubmissions(question.questionId).map(({ value, rank }) => ({
+        groupId: value.groupId,
+        answerText: value.kind === 'GROUP'
+          ? [...value.answers]
+            .sort((left, right) => left.placeholderNumber - right.placeholderNumber)
+            .map((answer) => `（${answer.placeholderNumber}）${answer.answerText}`)
+            .join('')
+          : value.answerText,
+        rank,
+        receivedAtMs: value.receivedAtMs,
+      })),
+    }));
   }
 
   getOwnProgress(groupId: string): StudentOwnProgress {
@@ -257,10 +349,16 @@ export class BuzzerResultsService {
     if (!this.#roster.has(groupId)) throw new BuzzerResultsQueryError('GROUP_INVALID');
     return {
       questions: this.#activity.questions.map((question) => {
-        const winner = this.#winners.get(question.questionId) ?? null;
+        const ranked = this.#rankedSubmissions(question.questionId);
+        const ranks = new Map(ranked.map(({ value, rank }) => [value.groupId, rank]));
+        const winner = ranked[0]?.value ?? null;
         const ownSubmission = this.#submissions.get(submissionKey(groupId, question.questionId)) ?? null;
         return {
           questionId: question.questionId,
+          groups: this.#roster.ids.map((configuredGroupId) => {
+            const groupSubmission = this.#submissions.get(submissionKey(configuredGroupId, question.questionId)) ?? null;
+            return { groupId: configuredGroupId, submitted: groupSubmission !== null, rank: ranks.get(configuredGroupId) ?? null };
+          }),
           winningGroupId: winner?.groupId ?? null,
           winningAnswer: winner && winner.kind !== 'GROUP' ? winner.answerText : null,
           ...(question.kind === 'GROUP'

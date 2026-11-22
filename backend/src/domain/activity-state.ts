@@ -14,12 +14,18 @@ export interface TransitionResult {
   readonly stage: ActivityStage;
 }
 
+export interface FairRankingSettings {
+  readonly enabled: boolean;
+  readonly delaySeconds: number | null;
+}
+
 /** Server-owned state for the one activity in this process. */
 export class ActivityState {
   #stage: ActivityStage = 'PREPARING';
   #worksheet: WorksheetReference | null = null;
   #questions: readonly Question[] = Object.freeze([]);
   #exportAnchorState: ExportAnchorState = Object.freeze({ status: 'NONE' });
+  #fairRankingSettings: FairRankingSettings = Object.freeze({ enabled: false, delaySeconds: null });
 
   get stage(): ActivityStage {
     return this.#stage;
@@ -35,6 +41,38 @@ export class ActivityState {
 
   get exportAnchorState(): ExportAnchorState {
     return this.#exportAnchorState;
+  }
+
+  get fairRankingSettings(): FairRankingSettings {
+    return this.#fairRankingSettings;
+  }
+
+  setFairRankingSettings(settings: FairRankingSettings): boolean {
+    if (this.#stage !== 'PREPARING' || typeof settings.enabled !== 'boolean') return false;
+    if (settings.enabled && (typeof settings.delaySeconds !== 'number'
+      || !Number.isFinite(settings.delaySeconds)
+      || settings.delaySeconds < 1
+      || settings.delaySeconds > 30)) return false;
+    if (!settings.enabled && settings.delaySeconds !== null
+      && (typeof settings.delaySeconds !== 'number'
+        || !Number.isFinite(settings.delaySeconds)
+        || settings.delaySeconds < 1
+        || settings.delaySeconds > 30)) {
+      return false;
+    }
+    this.#fairRankingSettings = Object.freeze({
+      enabled: settings.enabled,
+      delaySeconds: settings.enabled ? settings.delaySeconds : null,
+    });
+    return true;
+  }
+
+  get fairRankingConfigurationValid(): boolean {
+    return !this.#fairRankingSettings.enabled
+      || (typeof this.#fairRankingSettings.delaySeconds === 'number'
+        && Number.isFinite(this.#fairRankingSettings.delaySeconds)
+        && this.#fairRankingSettings.delaySeconds >= 1
+        && this.#fairRankingSettings.delaySeconds <= 30);
   }
 
   setExportAnchorState(state: ExportAnchorState): void {
@@ -120,7 +158,8 @@ export class ActivityState {
   }
 
   advance(from: ActivityStage, to: ActivityStage): TransitionResult {
-    if (from !== this.#stage || NEXT_STAGE[this.#stage] !== to) {
+    if (from !== this.#stage || NEXT_STAGE[this.#stage] !== to
+      || (to === 'BUZZING' && !this.fairRankingConfigurationValid)) {
       return { accepted: false, stage: this.#stage };
     }
     this.#stage = to;

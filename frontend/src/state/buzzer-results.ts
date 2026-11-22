@@ -1,4 +1,12 @@
-import type { ErrorCode, StudentResults, SubmitAnswerPayload, SubAnswer, TeacherProgress } from '../realtime/messages';
+import type { ErrorCode, FairRankingSettings, StudentResults, SubmitAnswerPayload, SubAnswer, TeacherProgress } from '../realtime/messages';
+
+export function validateFairRankingDelay(value: string): string | null {
+  if (value.trim().length === 0) return '請輸入 1 到 30 秒之間的有效延遲。';
+  const delaySeconds = Number(value);
+  return Number.isFinite(delaySeconds) && delaySeconds >= 1 && delaySeconds <= 30
+    ? null
+    : '請輸入 1 到 30 秒之間的有效延遲。';
+}
 
 export interface OwnQuestionProgress {
   readonly questionId: string;
@@ -15,6 +23,12 @@ export interface BuzzerResultsViewState {
   readonly error: { readonly code: ErrorCode; readonly message: string; readonly questionId: string | null } | null;
   readonly teacherProgress: TeacherProgress | null;
   readonly studentResults: StudentResults | null;
+  readonly fairRankingSettings: FairRankingSettings;
+  readonly csvExport: {
+    readonly status: 'idle' | 'pending' | 'downloaded' | 'error';
+    readonly fileName: string | null;
+    readonly message: string | null;
+  };
 }
 
 const INITIAL_STATE: BuzzerResultsViewState = Object.freeze({
@@ -24,6 +38,8 @@ const INITIAL_STATE: BuzzerResultsViewState = Object.freeze({
   error: null,
   teacherProgress: null,
   studentResults: null,
+  fairRankingSettings: Object.freeze({ enabled: false, delaySeconds: null }),
+  csvExport: Object.freeze({ status: 'idle', fileName: null, message: null }),
 });
 
 export class BuzzerResultsStore {
@@ -82,6 +98,22 @@ export class BuzzerResultsStore {
 
   applyStudentResults(results: StudentResults): void {
     this.#update({ studentResults: Object.freeze(results) });
+  }
+
+  applyFairRankingSettings(settings: FairRankingSettings): void {
+    this.#update({ fairRankingSettings: Object.freeze({ ...settings }) });
+  }
+
+  beginCsvExport(): void {
+    this.#update({ csvExport: Object.freeze({ status: 'pending', fileName: null, message: null }) });
+  }
+
+  completeCsvExport(fileName: string): void {
+    this.#update({ csvExport: Object.freeze({ status: 'downloaded', fileName, message: null }) });
+  }
+
+  failCsvExport(message: string): void {
+    this.#update({ csvExport: Object.freeze({ status: 'error', fileName: null, message }) });
   }
 
   #setProgress(questionId: string, item: OwnQuestionProgress): void {

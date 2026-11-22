@@ -25,6 +25,8 @@ describe('BuzzerAnswerPanel', () => {
       error: null,
       teacherProgress: null,
       studentResults: null,
+      fairRankingSettings: { enabled: false, delaySeconds: null },
+      csvExport: { status: 'idle', fileName: null, message: null },
     };
 
     const markup = renderPanel(state);
@@ -44,6 +46,8 @@ describe('BuzzerAnswerPanel', () => {
       error: { code, message: code, questionId: null },
       teacherProgress: null,
       studentResults: null,
+      fairRankingSettings: { enabled: false, delaySeconds: null },
+      csvExport: { status: 'idle', fileName: null, message: null },
     };
 
     expect(renderPanel(state)).toContain(guidance);

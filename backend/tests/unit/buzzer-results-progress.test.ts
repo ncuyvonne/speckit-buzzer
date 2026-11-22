@@ -27,9 +27,9 @@ describe('BuzzerResultsService teacher progress', () => {
         {
           questionId: '4',
           groups: [
-            { groupId: 'B', submitted: true, answerText: '  first  ' },
-            { groupId: 'A', submitted: true, answerText: 'later' },
-            { groupId: 'C', submitted: false, answerText: null },
+            { groupId: 'B', submitted: true, rank: 1, answerText: '  first  ' },
+            { groupId: 'A', submitted: true, rank: 2, answerText: 'later' },
+            { groupId: 'C', submitted: false, rank: null, answerText: null },
           ],
           winningGroupId: 'B',
           winningAnswer: '  first  ',
@@ -37,9 +37,9 @@ describe('BuzzerResultsService teacher progress', () => {
         {
           questionId: '1',
           groups: [
-            { groupId: 'B', submitted: false, answerText: null },
-            { groupId: 'A', submitted: false, answerText: null },
-            { groupId: 'C', submitted: true, answerText: 'last question' },
+            { groupId: 'B', submitted: false, rank: null, answerText: null },
+            { groupId: 'A', submitted: false, rank: null, answerText: null },
+            { groupId: 'C', submitted: true, rank: 1, answerText: 'last question' },
           ],
           winningGroupId: 'C',
           winningAnswer: 'last question',
@@ -51,9 +51,9 @@ describe('BuzzerResultsService teacher progress', () => {
   it('represents every group as unsubmitted when no answers exist', () => {
     const { service } = setup();
     expect(service.getTeacherProgress().questions[0]?.groups).toEqual([
-      { groupId: 'B', submitted: false, answerText: null },
-      { groupId: 'A', submitted: false, answerText: null },
-      { groupId: 'C', submitted: false, answerText: null },
+      { groupId: 'B', submitted: false, rank: null, answerText: null },
+      { groupId: 'A', submitted: false, rank: null, answerText: null },
+      { groupId: 'C', submitted: false, rank: null, answerText: null },
     ]);
   });
 });

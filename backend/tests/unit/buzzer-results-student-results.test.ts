@@ -25,10 +25,20 @@ describe('BuzzerResultsService student results', () => {
       {
         questionId: '1', winningGroupId: 'A', winningAnswer: 'winning answer',
         ownAnswer: 'private non-winning answer', ownStatus: 'SUBMITTED', ownGroupWon: false,
+        groups: [
+          { groupId: 'A', submitted: true, rank: 1 },
+          { groupId: 'B', submitted: true, rank: 2 },
+          { groupId: 'C', submitted: false, rank: null },
+        ],
       },
       {
         questionId: '2', winningGroupId: null, winningAnswer: null,
         ownAnswer: null, ownStatus: 'NOT_SUBMITTED', ownGroupWon: false,
+        groups: [
+          { groupId: 'A', submitted: false, rank: null },
+          { groupId: 'B', submitted: false, rank: null },
+          { groupId: 'C', submitted: false, rank: null },
+        ],
       },
     ] });
     expect(JSON.stringify(service.getStudentResults('C'))).not.toContain('private non-winning answer');

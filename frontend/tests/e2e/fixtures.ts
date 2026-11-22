@@ -52,7 +52,7 @@ const mixedWorksheetCells = {
 
 export const test = base.extend<TestFixtures & TestOptions>({
   teacherPassword: ['e2e-teacher-password', { option: true }],
-  groupIds: ['1,2,3', { option: true }],
+  groupIds: [process.env.PLAYWRIGHT_GROUP_IDS ?? process.env.GROUP_IDS ?? '1,2,3', { option: true }],
   guidedNotesSheets: [async ({}, use) => {
     const fixtures: FakeWorksheetFixture[] = [
       {
