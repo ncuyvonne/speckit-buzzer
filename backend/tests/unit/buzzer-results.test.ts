@@ -3,7 +3,11 @@ import { ActivityState } from '../../src/domain/activity-state.js';
 import { GroupRoster } from '../../src/domain/group-roster.js';
 import { BuzzerResultsService } from '../../src/domain/buzzer-results.js';
 
-function createSystem(questionIds: string[] = ['1', '2'], now: () => number = () => 1_000) {
+function createSystem(
+  questionIds: string[] = ['1', '2'],
+  now: () => number = () => 1_000,
+  timeLimitSeconds = 0,
+) {
   const activity = new ActivityState();
   if (questionIds.length > 0) {
     expect(activity.replaceGuidedNotesImport(
@@ -15,7 +19,9 @@ function createSystem(questionIds: string[] = ['1', '2'], now: () => number = ()
       })),
     )).toBe(true);
   }
+  expect(activity.setTimeLimitSeconds(timeLimitSeconds)).toBe(true);
   expect(activity.advance('PREPARING', 'BUZZING').accepted).toBe(true);
+  activity.startCountdown(now());
   const roster = new GroupRoster(['A', 'B', 'C']);
   const service = new BuzzerResultsService({ activity, roster, now });
   return { activity, roster, service };
@@ -226,5 +232,28 @@ describe('BuzzerResultsService submission', () => {
       ownStatus: 'SUBMITTED',
       ownAnswers: answers,
     });
+  });
+
+  it.each([
+    ['before', 2_999, true],
+    ['at', 3_000, false],
+    ['after', 3_001, false],
+  ] as const)('accepts only an answer received %s its deadline', (_label, receivedAt, accepted) => {
+    let now = 1_000;
+    const { activity, service } = createSystem(['1'], () => now, 2);
+    now = receivedAt;
+
+    const result = service.submitAnswer('A', '1', 'answer');
+    expect(result.accepted).toBe(accepted);
+    if (!accepted) {
+      expect(result).toMatchObject({ accepted: false, code: 'ANSWER_TIMED_OUT' });
+      expect(service.getSubmission('A', '1')).toBeNull();
+      expect(service.getWinner('1')).toBeNull();
+      expect(service.submitAnswer('B', '1', 'valid after rejection')).toMatchObject({
+        accepted: false,
+        code: 'ANSWER_TIMED_OUT',
+      });
+    }
+    expect(activity.deadlineAt).toBe(3_000);
   });
 });

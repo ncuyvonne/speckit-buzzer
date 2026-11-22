@@ -194,10 +194,17 @@ describe('buzzer results teacher progress WebSocket integration', () => {
       const ownProgressMessages = connection.messages.all.filter((message) =>
         message.type === 'buzzerResults.ownProgress');
       expect(ownProgressMessages.length).toBeGreaterThan(0);
+      expect(ownProgressMessages.some((message) => message.payload.questions?.[0]?.submitted === true
+        && message.payload.questions?.[0]?.answerText === ownAnswer)).toBe(true);
       for (const message of ownProgressMessages) {
-        expect(message.payload.questions).toEqual([
-          { questionId: '1', submitted: true, answerText: ownAnswer, locked: true },
-        ]);
+        expect(message.payload.totalQuestionCount).toBe(1);
+        expect(message.payload.submittedCount).toBe(message.payload.questions?.[0]?.submitted ? 1 : 0);
+        expect(message.payload.questions).toHaveLength(1);
+        if (message.payload.questions?.[0]?.submitted) {
+          expect(message.payload.questions[0]).toEqual({ questionId: '1', submitted: true, answerText: ownAnswer, locked: true });
+        } else {
+          expect(message.payload.questions?.[0]).toEqual({ questionId: '1', submitted: false, answerText: null, locked: false });
+        }
       }
       expect(connection.messages.all.some((message) => message.type === 'buzzerResults.teacherProgress')).toBe(false);
       expect(connection.messages.all.some((message) => message.type === 'buzzerResults.studentResults')).toBe(false);
@@ -244,14 +251,29 @@ describe('buzzer results teacher progress WebSocket integration', () => {
     expect(resultsA.payload.questions).toEqual([{
       questionId: '1', winningGroupId: 'A', winningAnswer: answers.A,
       ownAnswer: answers.A, ownStatus: 'SUBMITTED', ownGroupWon: true,
+      groups: [
+        { groupId: 'A', submitted: true, rank: 1 },
+        { groupId: 'B', submitted: true, rank: 2 },
+        { groupId: 'C', submitted: true, rank: 3 },
+      ],
     }]);
     expect(resultsB.payload.questions).toEqual([{
       questionId: '1', winningGroupId: 'A', winningAnswer: answers.A,
       ownAnswer: answers.B, ownStatus: 'SUBMITTED', ownGroupWon: false,
+      groups: [
+        { groupId: 'A', submitted: true, rank: 1 },
+        { groupId: 'B', submitted: true, rank: 2 },
+        { groupId: 'C', submitted: true, rank: 3 },
+      ],
     }]);
     expect(resultsC.payload.questions).toEqual([{
       questionId: '1', winningGroupId: 'A', winningAnswer: answers.A,
       ownAnswer: answers.C, ownStatus: 'SUBMITTED', ownGroupWon: false,
+      groups: [
+        { groupId: 'A', submitted: true, rank: 1 },
+        { groupId: 'B', submitted: true, rank: 2 },
+        { groupId: 'C', submitted: true, rank: 3 },
+      ],
     }]);
     expect(JSON.stringify(studentB.messages.all)).not.toContain(answers.C);
     expect(JSON.stringify(studentC.messages.all)).not.toContain(answers.B);

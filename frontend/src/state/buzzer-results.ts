@@ -1,4 +1,4 @@
-import type { ErrorCode, FairRankingSettings, StudentResults, SubmitAnswerPayload, SubAnswer, TeacherProgress } from '../realtime/messages';
+import type { ErrorCode, FairRankingSettings, ScoreboardEntry, StudentResults, SubmitAnswerPayload, SubAnswer, TeacherProgress } from '../realtime/messages';
 
 export function validateFairRankingDelay(value: string): string | null {
   if (value.trim().length === 0) return '請輸入 1 到 30 秒之間的有效延遲。';
@@ -7,7 +7,6 @@ export function validateFairRankingDelay(value: string): string | null {
     ? null
     : '請輸入 1 到 30 秒之間的有效延遲。';
 }
-
 export interface OwnQuestionProgress {
   readonly questionId: string;
   readonly submitted: boolean;
@@ -29,6 +28,9 @@ export interface BuzzerResultsViewState {
     readonly fileName: string | null;
     readonly message: string | null;
   };
+  readonly scoreboard: readonly ScoreboardEntry[] | null;
+  readonly submittedCount: number;
+  readonly totalQuestionCount: number;
 }
 
 const INITIAL_STATE: BuzzerResultsViewState = Object.freeze({
@@ -40,6 +42,9 @@ const INITIAL_STATE: BuzzerResultsViewState = Object.freeze({
   studentResults: null,
   fairRankingSettings: Object.freeze({ enabled: false, delaySeconds: null }),
   csvExport: Object.freeze({ status: 'idle', fileName: null, message: null }),
+  scoreboard: null,
+  submittedCount: 0,
+  totalQuestionCount: 0,
 });
 
 export class BuzzerResultsStore {
@@ -58,16 +63,22 @@ export class BuzzerResultsStore {
     const validIds = new Set(ids);
     this.#update({
       questionIds: ids,
+      totalQuestionCount: ids.length,
       ownProgress: Object.freeze(this.#state.ownProgress.filter((entry) => validIds.has(entry.questionId))),
       error: null,
     });
   }
 
-  applyOwnProgress(questions: readonly OwnQuestionProgress[]): void {
-    this.#update({ ownProgress: Object.freeze(questions.map((item) => Object.freeze({ ...item }))) });
+  applyOwnProgress(questions: readonly OwnQuestionProgress[], submittedCount: number, totalQuestionCount: number): void {
+    this.#update({
+      ownProgress: Object.freeze(questions.map((item) => Object.freeze({ ...item }))),
+      submittedCount,
+      totalQuestionCount,
+    });
   }
 
   applyAccepted(questionId: string, answer: string | readonly SubAnswer[]): void {
+    const isNewSubmission = !this.#state.ownProgress.some((item) => item.questionId === questionId && item.submitted);
     const acceptedSubmission: SubmitAnswerPayload = typeof answer === 'string'
       ? { questionId, answerText: answer }
       : { questionId, subAnswers: Object.freeze(answer.map((item) => Object.freeze({ ...item }))) };
@@ -78,7 +89,10 @@ export class BuzzerResultsStore {
       ...(typeof answer === 'string' ? {} : { answers: acceptedSubmission.subAnswers }),
       locked: true,
     });
-    this.#update({ acceptedSubmission: Object.freeze(acceptedSubmission), error: null });
+    this.#update({
+      acceptedSubmission: Object.freeze(acceptedSubmission), error: null,
+      ...(isNewSubmission ? { submittedCount: Math.min(this.#state.totalQuestionCount, this.#state.submittedCount + 1) } : {}),
+    });
   }
 
   applyError(code: ErrorCode, message: string, questionId: string | null): void {
@@ -114,6 +128,23 @@ export class BuzzerResultsStore {
 
   failCsvExport(message: string): void {
     this.#update({ csvExport: Object.freeze({ status: 'error', fileName: null, message }) });
+  }
+
+  applyScoreboard(entries: readonly ScoreboardEntry[]): void {
+    this.#update({ scoreboard: Object.freeze(entries.map((entry) => Object.freeze({ ...entry }))) });
+  }
+
+  clearSession(): void {
+    this.#update({
+      ownProgress: Object.freeze([]),
+      acceptedSubmission: null,
+      error: null,
+      teacherProgress: null,
+      studentResults: null,
+      scoreboard: null,
+      csvExport: Object.freeze({ status: 'idle', fileName: null, message: null }),
+      submittedCount: 0,
+    });
   }
 
   #setProgress(questionId: string, item: OwnQuestionProgress): void {

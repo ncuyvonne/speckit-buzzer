@@ -18,6 +18,10 @@ export interface TeacherPanelProps {
   readonly error: string | null;
   readonly onLogin: (password: string) => void;
   readonly onAdvance: (from: ActivityStage, to: ActivityStage) => void;
+  readonly timeLimitSeconds?: number;
+  readonly remainingSeconds?: number | null;
+  readonly onSetTimeLimit?: (seconds: number) => void;
+  readonly onReset?: () => void;
   readonly resultsProgress?: TeacherProgress | null;
   readonly fairRankingSettings?: FairRankingSettings;
   readonly onSetFairRanking?: (settings: FairRankingSettings) => void;
@@ -47,17 +51,37 @@ export function TeacherPanel({
   onSetFairRanking = () => undefined,
   csvExport = { status: 'idle', fileName: null, message: null },
   onExportCsv = () => undefined,
+  timeLimitSeconds = 0,
+  remainingSeconds = null,
+  onSetTimeLimit = () => undefined,
+  onReset = () => undefined,
 }: TeacherPanelProps) {
   const [password, setPassword] = useState('');
   const [fairRankingEnabled, setFairRankingEnabled] = useState(fairRankingSettings.enabled);
   const [delayText, setDelayText] = useState(fairRankingSettings.delaySeconds?.toString() ?? '3');
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [timeLimitInput, setTimeLimitInput] = useState(String(timeLimitSeconds));
+  const [timeLimitError, setTimeLimitError] = useState<string | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
   useEffect(() => {
     setFairRankingEnabled(fairRankingSettings.enabled);
     setDelayText(fairRankingSettings.delaySeconds?.toString() ?? '3');
     setSettingsError(null);
   }, [fairRankingSettings.enabled, fairRankingSettings.delaySeconds]);
+
+  useEffect(() => setTimeLimitInput(String(timeLimitSeconds)), [timeLimitSeconds]);
+
+  function submitTimeLimit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const seconds = Number(timeLimitInput);
+    if (timeLimitInput.trim().length === 0 || !Number.isInteger(seconds) || seconds < 0 || seconds > 3600) {
+      setTimeLimitError('請輸入 0 至 3600 的整數秒數。');
+      return;
+    }
+    setTimeLimitError(null);
+    onSetTimeLimit(seconds);
+  }
 
   if (role === 'TEACHER') {
     const nextStage = stage ? NEXT_STAGE[stage] : undefined;
@@ -83,6 +107,22 @@ export function TeacherPanel({
       <section aria-labelledby="teacher-panel-title">
         <h2 id="teacher-panel-title">老師控制台</h2>
         {error && <p role="alert">{error}</p>}
+        {stage === 'PREPARING' && (
+          <>
+          <p>目前設定：{timeLimitSeconds === 0 ? '不限時' : `${timeLimitSeconds} 秒`}</p>
+          <form noValidate onSubmit={submitTimeLimit}>
+            <label htmlFor="activity-time-limit">搶答時限（秒）</label>
+            <input id="activity-time-limit" type="number" min="0" max="3600" step="1"
+              value={timeLimitInput} onChange={(event) => setTimeLimitInput(event.currentTarget.value)} />
+            <button type="submit" disabled={!connected}>設定時限</button>
+            <p>0 秒代表不限時。</p>
+            {timeLimitError && <p role="alert">{timeLimitError}</p>}
+          </form>
+          </>
+        )}
+        {stage === 'BUZZING' && (
+          <p role="status">{timeLimitSeconds === 0 ? '不限時' : `剩餘時間：${remainingSeconds ?? timeLimitSeconds} 秒`}</p>
+        )}
         {nextStage && stage && (
           <button type="button" disabled={stage === 'PREPARING' ? !canStart : !connected} onClick={() => onAdvance(stage, nextStage)}>
             {NEXT_ACTION[stage]}
@@ -128,11 +168,20 @@ export function TeacherPanel({
         {stage === 'ENDED' && (
           <div>
             <p>活動已結束。</p>
+            <button type="button" disabled={!connected} onClick={() => setResetDialogOpen(true)}>重設活動</button>
             <button type="button" disabled={!connected || csvExport.status === 'pending'} onClick={onExportCsv}>
               {csvExport.status === 'pending' ? '準備 CSV 中…' : '匯出 CSV'}
             </button>
             {csvExport.status === 'downloaded' && <p role="status">已下載 {csvExport.fileName}</p>}
             {csvExport.status === 'error' && <p role="alert">{csvExport.message}</p>}
+            {resetDialogOpen && (
+              <div role="dialog" aria-modal="true" aria-labelledby="reset-activity-title">
+                <h3 id="reset-activity-title">確認重設活動</h3>
+                <p>保留目前學習單與題目；清除本場作答、鎖定、成功結果、正誤標記及分數，並將時限歸零。</p>
+                <button type="button" disabled={!connected} onClick={() => { onReset(); setResetDialogOpen(false); }}>確認重設</button>
+                <button type="button" onClick={() => setResetDialogOpen(false)}>取消</button>
+              </div>
+            )}
           </div>
         )}
         <TeacherResultsPanel progress={resultsProgress} rankingMayChange={stage === 'BUZZING' && fairRankingSettings.enabled} />

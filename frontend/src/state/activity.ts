@@ -12,6 +12,8 @@ export interface ActivityViewState {
   readonly connection: ConnectionStatus;
   readonly role: ConnectionRole;
   readonly stage: ActivityStage | null;
+  readonly timeLimitSeconds: number;
+  readonly remainingSeconds: number | null;
   readonly groups: readonly string[];
   readonly selectedGroupId: string | null;
   readonly serverError: { readonly code: ErrorCode; readonly message: string } | null;
@@ -30,6 +32,8 @@ const INITIAL_STATE: ActivityViewState = Object.freeze({
   connection: 'disconnected',
   role: 'UNAUTHENTICATED',
   stage: null,
+  timeLimitSeconds: 0,
+  remainingSeconds: null,
   groups: Object.freeze([]),
   selectedGroupId: null,
   serverError: null,
@@ -60,8 +64,8 @@ export class ActivityStore {
     for (const listener of this.#listeners) listener();
   }
 
-  applySnapshot(stage: ActivityStage, groups: readonly string[]): void {
-    this.update({ stage, groups: Object.freeze([...groups]), serverError: null });
+  applySnapshot(stage: ActivityStage, groups: readonly string[], timeLimitSeconds = 0, remainingSeconds: number | null = null): void {
+    this.update({ stage, groups: Object.freeze([...groups]), timeLimitSeconds, remainingSeconds, serverError: null });
   }
 
   applyGuidedNotesSnapshot(

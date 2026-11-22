@@ -45,6 +45,21 @@ describe('request envelope protocol', () => {
     ).toMatchObject({ ok: false, code: 'INVALID_MESSAGE', requestId: 'r2' });
   });
 
+  it('decodes correctness, scoreboard, and reset commands while rejecting invalid judgements', () => {
+    expect(decodeClientMessage(asBuffer(JSON.stringify({
+      type: 'buzzerResults.markCorrectness', requestId: 'mark', payload: { questionId: 'Q1', judgement: null },
+    })), false)).toMatchObject({ ok: true, message: { type: 'buzzerResults.markCorrectness', payload: { judgement: null } } });
+    expect(decodeClientMessage(asBuffer(JSON.stringify({
+      type: 'buzzerResults.markCorrectness', requestId: 'bad-mark', payload: { questionId: 'Q1', judgement: 'MAYBE' },
+    })), false)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+    expect(decodeClientMessage(asBuffer(JSON.stringify({
+      type: 'buzzerResults.getScoreboard', requestId: 'board', payload: {},
+    })), false)).toMatchObject({ ok: true, message: { type: 'buzzerResults.getScoreboard' } });
+    expect(decodeClientMessage(asBuffer(JSON.stringify({
+      type: 'activity.reset', requestId: 'reset', payload: { clear: false },
+    })), false)).toMatchObject({ ok: false, code: 'INVALID_MESSAGE' });
+  });
+
   it('omits an invalid request ID from the protocol error', () => {
     expect(
       decodeClientMessage(

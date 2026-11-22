@@ -5,6 +5,10 @@ import type { BuzzerResultsViewState } from '../state/buzzer-results';
 export interface BuzzerAnswerPanelProps {
   readonly groupId: string | null;
   readonly stage: ActivityStage | null;
+  readonly timeLimitSeconds?: number;
+  readonly remainingSeconds?: number | null;
+  readonly submittedCount?: number;
+  readonly totalQuestionCount?: number;
   readonly connected: boolean;
   readonly state: BuzzerResultsViewState;
   readonly questionLayouts: readonly QuestionLayoutSummary[];
@@ -19,6 +23,7 @@ const ERROR_GUIDANCE: Partial<Record<ErrorCode, string>> = {
   ANSWER_LOCKED: '本組此題已鎖定，無法再次作答。',
   GROUP_ANSWER_INCOMPLETE: '題組尚未填完，請補齊所有子題答案後再送出。',
   GROUP_ANSWER_INVALID: '題組子題編號與題目不符，請檢查各子題後再送出。',
+  ANSWER_TIMED_OUT: '作答時間已到，答案未送出。',
   QUESTION_INVALID: '找不到這個題目，請重新選擇題號。',
   STAGE_CONFLICT: '目前不是搶答階段，請等待老師開始搶答。',
 };
@@ -35,6 +40,10 @@ export function BuzzerAnswerPanel({
   questionLayouts,
   onSubmit,
   onClearError,
+  timeLimitSeconds = 0,
+  remainingSeconds = null,
+  submittedCount = state.submittedCount,
+  totalQuestionCount = state.totalQuestionCount || state.questionIds.length,
 }: BuzzerAnswerPanelProps) {
   const [questionId, setQuestionId] = useState('');
   const [drafts, setDrafts] = useState<Readonly<Record<string, Readonly<Record<number, string>>>>>({});
@@ -88,6 +97,8 @@ export function BuzzerAnswerPanel({
     <section aria-labelledby="buzzer-answer-title">
       <h2 id="buzzer-answer-title">學生搶答</h2>
       <p>目前組別：{groupId ?? '尚未加入'}</p>
+      {isBuzzing && <p role="status">{timeLimitSeconds === 0 ? '不限時' : `剩餘時間：${remainingSeconds ?? timeLimitSeconds} 秒`}</p>}
+      {isBuzzing && <p>本組已送出 {submittedCount} / {totalQuestionCount}</p>}
       {state.questionIds.length === 0 ? (
         <p>目前沒有可作答的題目，請老師先匯入題號。</p>
       ) : (

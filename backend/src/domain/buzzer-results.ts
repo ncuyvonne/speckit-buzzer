@@ -41,7 +41,8 @@ export type BuzzerResultsErrorCode =
   | 'ANSWER_EMPTY'
   | 'ANSWER_LOCKED'
   | 'GROUP_ANSWER_INCOMPLETE'
-  | 'GROUP_ANSWER_INVALID';
+  | 'GROUP_ANSWER_INVALID'
+  | 'ANSWER_TIMED_OUT';
 
 export type SubmitAnswerResult =
   | { readonly accepted: true; readonly submission: AcceptedAnswerSubmission }
@@ -103,6 +104,8 @@ export interface StudentOwnProgress {
     readonly answers?: readonly SubAnswer[] | null;
     readonly locked: boolean;
   }[];
+  readonly submittedCount: number;
+  readonly totalQuestionCount: number;
 }
 
 export class BuzzerResultsQueryError extends Error {
@@ -170,6 +173,11 @@ export class BuzzerResultsService {
   submitAnswer(groupId: string, questionId: string, answer: string | readonly SubAnswer[]): SubmitAnswerResult {
     if (this.#activity.stage !== 'BUZZING') return { accepted: false, code: 'STAGE_CONFLICT' };
     if (!this.#roster.has(groupId)) return { accepted: false, code: 'GROUP_INVALID' };
+    const receivedAtMs = this.#now();
+    const deadlineAt = this.#activity.deadlineAt;
+    if (deadlineAt !== null && receivedAtMs >= deadlineAt) {
+      return { accepted: false, code: 'ANSWER_TIMED_OUT' };
+    }
     const question = this.#activity.questions.find((item) => item.questionId === questionId);
     if (!question) {
       return { accepted: false, code: 'QUESTION_INVALID' };
@@ -237,7 +245,6 @@ export class BuzzerResultsService {
     const key = submissionKey(groupId, questionId);
     if (this.#submissions.has(key)) return { accepted: false, code: 'ANSWER_LOCKED' };
 
-    const receivedAtMs = this.#now();
     const acceptedOrder = this.#nextReceivedOrder;
     const priorWinCountSnapshot = this.#countCurrentWins(groupId, questionId);
     const settings = this.#activity.fairRankingSettings;
@@ -278,6 +285,11 @@ export class BuzzerResultsService {
       if (question.questionId !== exceptQuestionId && this.getWinner(question.questionId)?.groupId === groupId) count += 1;
     }
     return count;
+  }
+
+  clearSession(): void {
+    this.#submissions.clear();
+    this.#nextReceivedOrder = 1;
   }
 
   getTeacherProgress(): TeacherProgress {
@@ -328,8 +340,7 @@ export class BuzzerResultsService {
 
   getOwnProgress(groupId: string): StudentOwnProgress {
     if (!this.#roster.has(groupId)) throw new BuzzerResultsQueryError('GROUP_INVALID');
-    return {
-      questions: this.#activity.questions.map((question) => {
+    const questions = this.#activity.questions.map((question) => {
         const submission = this.#submissions.get(submissionKey(groupId, question.questionId)) ?? null;
         return {
           questionId: question.questionId,
@@ -340,7 +351,11 @@ export class BuzzerResultsService {
             : {}),
           locked: submission?.locked ?? false,
         };
-      }),
+      });
+    return {
+      questions,
+      submittedCount: questions.filter((question) => question.submitted).length,
+      totalQuestionCount: questions.length,
     };
   }
 

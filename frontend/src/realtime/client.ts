@@ -4,10 +4,12 @@ import { StudentSelection } from '../state/student-selection';
 import type {
   ActivityStage,
   ClientMessage,
+  CorrectnessJudgement,
   ErrorCode,
   FairRankingSettings,
   GuidedNotesErrorCode,
   QuestionLayoutSummary,
+  ScoreboardEntry,
   SubmitAnswerPayload,
   SubAnswer,
   StudentResults,
@@ -147,6 +149,15 @@ function isStudentResults(value: unknown): value is StudentResults {
     && typeof question.ownGroupWon === 'boolean');
 }
 
+function isScoreboard(value: unknown): value is { entries: readonly ScoreboardEntry[] } {
+  if (!isRecord(value) || !Array.isArray(value.entries)) return false;
+  return value.entries.every((entry) => isRecord(entry)
+    && Number.isSafeInteger(entry.rank) && Number(entry.rank) > 0
+    && typeof entry.groupId === 'string'
+    && Number.isSafeInteger(entry.score) && Number(entry.score) >= 0
+    && Number.isSafeInteger(entry.successfulQuestionCount) && Number(entry.successfulQuestionCount) >= 0);
+}
+
 const GUIDED_NOTES_ERROR_CODES = new Set<string>([
   'GUIDED_NOTES_BUSY',
   'SHEETS_NOT_CONFIGURED',
@@ -275,6 +286,24 @@ export class RealtimeClient {
     return this.#send({ type: 'activity.advance', requestId: createRequestId(), payload: { from, to } });
   }
 
+  setTimeLimit(seconds: number): boolean {
+    return this.#send({ type: 'activity.setTimeLimit', requestId: createRequestId(), payload: { seconds } });
+  }
+
+  markCorrectness(questionId: string, judgement: CorrectnessJudgement | null): boolean {
+    return this.#send({
+      type: 'buzzerResults.markCorrectness', requestId: createRequestId(), payload: { questionId, judgement },
+    });
+  }
+
+  getScoreboard(): boolean {
+    return this.#send({ type: 'buzzerResults.getScoreboard', requestId: createRequestId(), payload: {} });
+  }
+
+  resetActivity(): boolean {
+    return this.#send({ type: 'activity.reset', requestId: createRequestId(), payload: {} });
+  }
+
   importWorksheet(spreadsheetUrl: string, worksheetTitle: string): boolean {
     const sent = this.#send({
       type: 'guidedNotes.import',
@@ -397,8 +426,12 @@ export class RealtimeClient {
         && typeof item.submitted === 'boolean'
         && isValidNullableString(item.answerText)
         && hasValidOptionalSubAnswers(item, 'answers')
-        && typeof item.locked === 'boolean')) {
-        this.buzzerResults.applyOwnProgress(questions as unknown as OwnQuestionProgress[]);
+        && typeof item.locked === 'boolean')
+        && Number.isSafeInteger(payload.submittedCount) && Number(payload.submittedCount) >= 0
+        && Number.isSafeInteger(payload.totalQuestionCount) && Number(payload.totalQuestionCount) >= 0
+        && Number(payload.submittedCount) <= Number(payload.totalQuestionCount)) {
+        this.buzzerResults.applyOwnProgress(questions as unknown as OwnQuestionProgress[],
+          Number(payload.submittedCount), Number(payload.totalQuestionCount));
       }
       return;
     }
@@ -417,6 +450,26 @@ export class RealtimeClient {
         downloadCsv(payload.fileName, payload.csvText);
         this.buzzerResults.completeCsvExport(payload.fileName);
       }
+      return;
+    }
+    if (message.type === 'buzzerResults.scoreboard' && isScoreboard(payload)) {
+      const role = this.store.getSnapshot().role;
+      if (role === 'TEACHER' || role === 'STUDENT') {
+        this.buzzerResults.applyScoreboard(payload.entries);
+        if (this.store.getSnapshot().serverError?.code === 'WINNER_NOT_FOUND') this.store.update({ serverError: null });
+      }
+      return;
+    }
+    if (message.type === 'buzzerResults.correctnessMarked'
+      && this.store.getSnapshot().role === 'TEACHER'
+      && typeof payload.questionId === 'string'
+      && (payload.judgement === 'CORRECT' || payload.judgement === 'INCORRECT' || payload.judgement === null)) {
+      this.store.update({ serverError: null });
+      return;
+    }
+    if (message.type === 'activity.resetCompleted' && payload.stage === 'PREPARING' && payload.timeLimitSeconds === 0) {
+      this.store.update({ stage: 'PREPARING', timeLimitSeconds: 0, remainingSeconds: null });
+      this.buzzerResults.clearSession();
       return;
     }
     if (message.type === 'buzzerResults.submitted'
@@ -438,8 +491,9 @@ export class RealtimeClient {
     }
 
     if (message.type === 'activity.snapshot' && isActivityStage(payload.stage) && Array.isArray(payload.groups) &&
-      payload.groups.every((group) => typeof group === 'string')) {
-      this.store.applySnapshot(payload.stage, payload.groups);
+      payload.groups.every((group) => typeof group === 'string') && Number.isInteger(payload.timeLimitSeconds) &&
+      (payload.remainingSeconds === null || Number.isInteger(payload.remainingSeconds))) {
+      this.store.applySnapshot(payload.stage, payload.groups, Number(payload.timeLimitSeconds), payload.remainingSeconds as number | null);
       if (this.#awaitingInitialSnapshot) {
         this.#awaitingInitialSnapshot = false;
         const savedGroupId = this.#studentSelection.read();
@@ -447,15 +501,34 @@ export class RealtimeClient {
           this.#send({ type: 'student.join', requestId: createRequestId(), payload: { groupId: savedGroupId } });
         }
       }
-      if (payload.stage === 'ENDED' && this.store.getSnapshot().role === 'STUDENT') this.getStudentResults();
+      if (payload.stage === 'ENDED') {
+        if (this.store.getSnapshot().role === 'STUDENT') this.getStudentResults();
+        if (this.store.getSnapshot().role === 'STUDENT' || this.store.getSnapshot().role === 'TEACHER') this.getScoreboard();
+      }
       return;
     }
-    if (message.type === 'activity.phaseChanged' && isActivityStage(payload.stage)) {
+    if (message.type === 'activity.phaseChanged' && isActivityStage(payload.stage)
+      && Number.isInteger(payload.timeLimitSeconds)
+      && (payload.remainingSeconds === null || Number.isInteger(payload.remainingSeconds))) {
       this.store.update({
         stage: payload.stage,
+        timeLimitSeconds: Number(payload.timeLimitSeconds),
+        remainingSeconds: payload.remainingSeconds as number | null,
         ...(this.store.getSnapshot().serverError?.code === 'STAGE_CONFLICT' ? { serverError: null } : {}),
       });
-      if (payload.stage === 'ENDED' && this.store.getSnapshot().role === 'STUDENT') this.getStudentResults();
+      if (payload.stage === 'ENDED') {
+        if (this.store.getSnapshot().role === 'STUDENT') this.getStudentResults();
+        if (this.store.getSnapshot().role === 'STUDENT' || this.store.getSnapshot().role === 'TEACHER') this.getScoreboard();
+      }
+      return;
+    }
+    if (message.type === 'activity.countdown' && Number.isInteger(payload.remainingSeconds)) {
+      this.store.update({ remainingSeconds: Number(payload.remainingSeconds) });
+      return;
+    }
+    if (message.type === 'activity.timeLimitSet' && Number.isInteger(payload.seconds)
+      && Number(payload.seconds) >= 0 && Number(payload.seconds) <= 3600) {
+      this.store.update({ timeLimitSeconds: Number(payload.seconds), remainingSeconds: null, serverError: null });
       return;
     }
     if (
@@ -494,6 +567,7 @@ export class RealtimeClient {
     }
     if (message.type === 'teacher.authenticated' && payload.ok === true) {
       this.store.update({ role: 'TEACHER', serverError: null });
+      if (this.store.getSnapshot().stage === 'ENDED') this.getScoreboard();
       return;
     }
     if (message.type === 'student.joined' && payload.ok === true && typeof payload.groupId === 'string') {

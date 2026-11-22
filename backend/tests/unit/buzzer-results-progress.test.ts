@@ -57,3 +57,31 @@ describe('BuzzerResultsService teacher progress', () => {
     ]);
   });
 });
+
+describe('BuzzerResultsService own progress summary', () => {
+  it('counts one accepted top-level question, excludes duplicates and other groups, and includes total questions', () => {
+    const { service } = setup();
+    expect(service.getOwnProgress('A')).toMatchObject({ submittedCount: 0, totalQuestionCount: 2 });
+    expect(service.submitAnswer('A', '4', 'group answer')).toMatchObject({ accepted: true });
+    expect(service.submitAnswer('A', '4', 'duplicate')).toMatchObject({ accepted: false, code: 'ANSWER_LOCKED' });
+    expect(service.submitAnswer('A', 'missing', 'invalid')).toMatchObject({ accepted: false, code: 'QUESTION_INVALID' });
+    expect(service.submitAnswer('B', '1', 'other group')).toMatchObject({ accepted: true });
+    expect(service.getOwnProgress('A')).toMatchObject({ submittedCount: 1, totalQuestionCount: 2 });
+    expect(JSON.stringify(service.getOwnProgress('A'))).not.toContain('other group');
+  });
+
+  it('does not count rejected submissions at or after the deadline', () => {
+    let now = 100;
+    const activity = new ActivityState();
+    activity.replaceGuidedNotesImport({ spreadsheetId: 'unit', sheetId: 1, worksheetTitle: 'Sheet' }, [
+      { questionId: 'Q1', displayOrder: 1, sourceRowAtImport: 2 },
+    ]);
+    activity.setTimeLimitSeconds(1);
+    activity.advance('PREPARING', 'BUZZING');
+    activity.startCountdown(now);
+    const service = new BuzzerResultsService({ activity, roster: new GroupRoster(['A']), now: () => now });
+    now = 1_100;
+    expect(service.submitAnswer('A', 'Q1', 'late')).toMatchObject({ accepted: false, code: 'ANSWER_TIMED_OUT' });
+    expect(service.getOwnProgress('A')).toMatchObject({ submittedCount: 0, totalQuestionCount: 1 });
+  });
+});

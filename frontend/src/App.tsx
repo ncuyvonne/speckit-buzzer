@@ -4,6 +4,8 @@ import { GuidedNotesPanel } from './components/GuidedNotesPanel';
 import { TeacherPanel } from './components/TeacherPanel';
 import { BuzzerAnswerPanel } from './components/BuzzerAnswerPanel';
 import { StudentResultsPanel } from './components/StudentResultsPanel';
+import { StudentScoreboardPanel } from './components/StudentScoreboardPanel';
+import { TeacherScoringPanel } from './components/TeacherScoringPanel';
 import { RealtimeClient } from './realtime/client';
 
 const STAGE_LABELS = {
@@ -17,7 +19,7 @@ export default function App() {
   const state = useSyncExternalStore(client.store.subscribe, client.store.getSnapshot);
   const buzzerState = useSyncExternalStore(client.buzzerResults.subscribe, client.buzzerResults.getSnapshot);
   const teacherError = state.serverError &&
-    ['AUTH_INVALID', 'STAGE_CONFLICT', 'FAIR_RANKING_INVALID'].includes(state.serverError.code)
+    ['AUTH_INVALID', 'STAGE_CONFLICT', 'FAIR_RANKING_INVALID', 'TIME_LIMIT_INVALID', 'WINNER_NOT_FOUND'].includes(state.serverError.code)
     ? state.serverError.message
     : null;
   const authorizationError = state.serverError?.code === 'AUTH_REQUIRED'
@@ -44,6 +46,10 @@ export default function App() {
           error={teacherError}
           onLogin={(password) => client.authenticate(password)}
           onAdvance={(from, to) => client.advance(from, to)}
+          timeLimitSeconds={state.timeLimitSeconds}
+          remainingSeconds={state.remainingSeconds}
+          onSetTimeLimit={(seconds) => client.setTimeLimit(seconds)}
+          onReset={() => client.resetActivity()}
           resultsProgress={buzzerState.teacherProgress}
           fairRankingSettings={buzzerState.fairRankingSettings}
           onSetFairRanking={(settings) => client.setFairRanking(settings)}
@@ -66,19 +72,33 @@ export default function App() {
           onExport={() => client.exportAnswers()}
         />
       )}
+      {state.role === 'TEACHER' && state.stage === 'ENDED' && (
+        <TeacherScoringPanel
+          progress={buzzerState.teacherProgress}
+          scoreboard={buzzerState.scoreboard}
+          onMark={(questionId, judgement) => client.markCorrectness(questionId, judgement)}
+        />
+      )}
       {state.role === 'STUDENT' && (
         <BuzzerAnswerPanel
           groupId={state.selectedGroupId}
           stage={state.stage}
+          timeLimitSeconds={state.timeLimitSeconds}
+          remainingSeconds={state.remainingSeconds}
           connected={state.connection === 'connected'}
           state={buzzerState}
           questionLayouts={state.questionLayouts}
+          submittedCount={buzzerState.submittedCount}
+          totalQuestionCount={buzzerState.totalQuestionCount || buzzerState.questionIds.length}
           onSubmit={(questionId, answer) => client.submitAnswer(questionId, answer)}
           onClearError={() => client.buzzerResults.clearError()}
         />
       )}
       {state.role === 'STUDENT' && state.stage === 'ENDED' && (
         <StudentResultsPanel results={buzzerState.studentResults} />
+      )}
+      {state.role === 'STUDENT' && state.stage === 'ENDED' && (
+        <StudentScoreboardPanel entries={buzzerState.scoreboard} />
       )}
       {state.role !== 'TEACHER' && (
         <StudentJoin

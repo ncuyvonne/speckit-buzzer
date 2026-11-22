@@ -302,7 +302,7 @@ describe('RealtimeClient group binding errors', () => {
         { placeholderNumber: 1, answerText: 'A1' },
         { placeholderNumber: 2, answerText: 'A2' },
       ],
-    }] } });
+    }], submittedCount: 1, totalQuestionCount: 1 } });
     expect(student.buzzerResults.getSnapshot().ownProgress[0]?.answers).toEqual([
       { placeholderNumber: 1, answerText: 'A1' },
       { placeholderNumber: 2, answerText: 'A2' },

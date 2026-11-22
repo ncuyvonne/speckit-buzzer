@@ -10,7 +10,9 @@ import {
   type AppConfig,
 } from './config.js';
 import { ActivityState } from './domain/activity-state.js';
+import { ActivityTimer } from './domain/activity-timer.js';
 import { BuzzerResultsService } from './domain/buzzer-results.js';
+import { ScoringService } from './domain/scoring.js';
 import { GroupRoster } from './domain/group-roster.js';
 import { createGoogleSheetsAdapter } from './integrations/google-sheets/adapter.js';
 import type { GoogleSheetsAdapter } from './integrations/google-sheets/types.js';
@@ -40,6 +42,7 @@ export interface RealtimeServer {
   readonly roster: GroupRoster;
   readonly guidedNotes: GuidedNotesService;
   readonly buzzerResults: BuzzerResultsService;
+  readonly scoring: ScoringService;
   listen(port?: number): Promise<number>;
   close(): Promise<void>;
 }
@@ -52,6 +55,13 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
   const activity = new ActivityState();
   const roster = new GroupRoster(config.groups);
   const buzzerResults = new BuzzerResultsService({ activity, roster });
+  const scoring = new ScoringService({ activity, roster, buzzerResults });
+  let hub: RealtimeHub | null = null;
+  const activityTimer = new ActivityTimer({
+    activity,
+    onCountdown: (remainingSeconds) => hub?.broadcastCountdown(remainingSeconds),
+    onEnded: () => hub?.broadcastPhaseChanged(),
+  });
   let sheetsAdapter = options.guidedNotes?.sheetsAdapter;
   if (!sheetsAdapter) {
     let credentials = null;
@@ -68,8 +78,13 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
     activity,
     sheets: sheetsAdapter,
     winningResultsProvider,
+    onImportCommitted: () => {
+      activityTimer.stop();
+      buzzerResults.clearSession();
+      scoring.clear();
+    },
   });
-  const hub = new RealtimeHub({ config, activity, roster, guidedNotes, buzzerResults });
+  hub = new RealtimeHub({ config, activity, activityTimer, roster, guidedNotes, buzzerResults, scoring });
   const httpServer = createServer((_request, response) => {
     response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
     response.end('Not found');
@@ -105,10 +120,15 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
 
     socket.send(JSON.stringify({
       type: 'activity.snapshot',
-      payload: { stage: activity.stage, groups: roster.ids },
+      payload: {
+        stage: activity.stage,
+        groups: roster.ids,
+        timeLimitSeconds: activity.timeLimitSeconds,
+        remainingSeconds: activity.getRemainingSeconds(),
+      },
     }));
 
-    hub.attach(socket);
+    hub?.attach(socket);
   });
 
   return {
@@ -118,6 +138,7 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
     roster,
     guidedNotes,
     buzzerResults,
+    scoring,
     listen(port = defaultPort) {
       return new Promise<number>((resolveListen, reject) => {
         const onError = (error: Error) => {
@@ -135,6 +156,7 @@ export function createRealtimeServer(options: RealtimeServerOptions = {}): Realt
       });
     },
     async close() {
+      activityTimer.stop();
       for (const stop of stopHeartbeat.values()) stop();
       stopHeartbeat.clear();
       for (const socket of webSocketServer.clients) socket.terminate();

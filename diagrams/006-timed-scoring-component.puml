@@ -1,0 +1,48 @@
+@startuml
+title 006 計時搶答與計分板 - 組件圖
+
+actor "老師" as Teacher
+actor "學生" as Student
+
+component "課堂介面" as UI
+component "即時連線" as Realtime
+component "活動狀態" as Activity
+component "搶答結果" as Answers
+component "活動計時" as Timer
+component "正誤與計分板" as Scores
+component "組別名冊" as Roster
+
+Teacher --> UI : 設定時限／開始結束／標記正誤／確認重設
+Student --> UI : 提交答案／查看本組進度及計分板
+UI --> Realtime : 操作及畫面更新
+Realtime --> Activity : 階段與時限
+Realtime --> Timer : 開始、手動結束、重設及匯入後取消
+Timer --> Activity : 驗證到期後進入已結束
+Timer --> Realtime : 倒數更新及到期階段廣播
+Realtime --> Answers : 接受／拒絕答案、截止檢查及本組進度
+Realtime --> Scores : 結束後標記、計分板查詢
+Scores --> Answers : 取得各題成功組別
+Scores --> Roster : 所有組別與排序識別碼
+Realtime --> Roster : 本組及名冊投影
+Realtime --> Answers : 確認重設或匯入後清除答案／勝出
+Realtime --> Scores : 確認重設或匯入後清除正誤標記與分數
+
+note right of Timer
+依活動開始與截止時刻顯示倒數。
+0 秒表示不限時。
+手動結束與到期結束都停止倒數。
+老師重設後時限歸零。
+end note
+
+note right of Scores
+老師人工標記成功答案對錯。
+每題「對」得 1 分。
+計分板在活動結束後提供給師生。
+重設時清除本場標記與分數。
+end note
+
+note bottom of UI
+搶答中學生只看到本組 N / 總題數，
+不接收其他組別的作答內容或進度。
+end note
+@enduml

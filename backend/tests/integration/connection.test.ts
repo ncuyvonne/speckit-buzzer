@@ -66,7 +66,9 @@ describe('WebSocket connection boundary', () => {
     const socket = await openSocket(url);
     const snapshot = await waitForMessage(socket, (value) => (value as { type?: string }).type === 'activity.snapshot');
 
-    expect(snapshot).toEqual({ type: 'activity.snapshot', payload: { stage: 'PREPARING', groups: ['1', '2'] } });
+    expect(snapshot).toEqual({ type: 'activity.snapshot', payload: {
+      stage: 'PREPARING', groups: ['1', '2'], timeLimitSeconds: 0, remainingSeconds: null,
+    } });
     socket.close();
   });
 
