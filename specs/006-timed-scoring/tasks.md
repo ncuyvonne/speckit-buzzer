@@ -208,4 +208,4 @@ US3 projection/types: T040 and T042 (backend domain / frontend message types)
 
 ## Phase 7: Convergence
 
-- [X] T049 [US2] On successful worksheet import, synchronize the frontend time limit to 0 and clear cached answer, judgment, and scoreboard state; add regression coverage for importing after a nonzero preparing-stage limit per FR-014 and SC-006 (partial).
+- [X] T049 [US2] On successful worksheet import, synchronize the frontend time limit to 0 and clear cached answer, judgment, and scoreboard state; add regression coverage for importing after a nonzero preparing-stage limit per FR-014 and SC-006.

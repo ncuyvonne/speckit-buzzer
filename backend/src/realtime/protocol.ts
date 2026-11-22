@@ -218,9 +218,6 @@ export function decodeClientMessage(data: Buffer | ArrayBuffer | Buffer[], isBin
       };
     case 'activity.setTimeLimit':
       if (typeof payload.seconds !== 'number' || !Number.isFinite(payload.seconds)) break;
-      if (!Number.isInteger(payload.seconds) || payload.seconds < 0 || payload.seconds > 3_600) {
-        return { ok: false, code: 'TIME_LIMIT_INVALID', requestId };
-      }
       if (Object.keys(payload).some((key) => key !== 'seconds')) break;
       return {
         ok: true,

@@ -15,6 +15,8 @@ test('teacher imports displayed IDs from a dynamically located row and column or
   await loginTeacher(page);
 
   await expect(page.getByRole('heading', { name: 'Guided Notes' })).toBeVisible();
+  await expect(page.getByText('成功匯入後會清除舊作答與計分資料，並將搶答時限重設為 0 秒（不限時）；公平順位設定會保留。'))
+    .toBeVisible();
   await expect(page.getByText('題數：0')).toBeVisible();
   await page.getByLabel('Google 試算表網址').fill('https://docs.google.com/spreadsheets/d/e2e-valid-sheet/edit');
   await page.getByLabel('工作表分頁名稱').fill('工作表1');

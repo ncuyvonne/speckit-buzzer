@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { test as base, expect } from './fixtures';
 
 const configuredGroupIds = process.env.PLAYWRIGHT_GROUP_IDS ?? process.env.GROUP_IDS ?? '1,2,3';
@@ -114,6 +115,28 @@ base('fairness on: a prior winner receives the configured effective-time delay',
     await expect(secondQuestion.getByText(`目前成功組別：${secondGroup}；答案：尚未成功組答案一；尚未成功組答案二`, { exact: true })).toBeVisible();
     await expect(secondQuestion.getByText(`組別 ${firstGroup}：第 2 名`, { exact: true })).toBeVisible();
     await expect(secondQuestion.getByText(`組別 ${secondGroup}：第 1 名`, { exact: true })).toBeVisible();
+
+    await teacher.getByRole('button', { name: '結束活動' }).click();
+    await expect(teacher.getByRole('heading', { name: '正誤標記與計分板' })).toBeVisible();
+    await teacher.getByRole('button', { name: '標記正確：2' }).click();
+    const scoreboard = teacher.getByRole('table', { name: '計分板' });
+    await expect(scoreboard.locator('tbody tr').first()).toContainText(`組別 ${secondGroup}`);
+    await expect(scoreboard.locator('tbody tr').first()).toContainText('1 分');
+
+    const downloadPromise = teacher.waitForEvent('download');
+    await teacher.getByRole('button', { name: '匯出 CSV' }).click();
+    const download = await downloadPromise;
+    const csvPath = await download.path();
+    expect(csvPath).not.toBeNull();
+    const csv = (await readFile(csvPath!)).toString('utf8').replace(/^\uFEFF/u, '');
+    const secondQuestionRows = csv.split('\r\n').filter((row) => row.startsWith('2,'));
+    expect(secondQuestionRows.map((row) => {
+      const fields = row.split(',');
+      return [fields[1], fields[3], fields[4]];
+    })).toEqual([
+      [secondGroup, '1', '是'],
+      [firstGroup, '2', '否'],
+    ]);
   } finally {
     await Promise.all([firstStudent.close(), secondStudent.close(), teacher.close()]);
   }

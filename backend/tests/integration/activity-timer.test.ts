@@ -102,7 +102,7 @@ describe('activity timer WebSocket integration', () => {
 
     const unauthorized = student.inbox.waitFor((message) => message.type === 'error' && message.requestId === 'unauthorized-limit');
     student.socket.send(JSON.stringify({
-      type: 'activity.setTimeLimit', requestId: 'unauthorized-limit', payload: { seconds: 2 },
+      type: 'activity.setTimeLimit', requestId: 'unauthorized-limit', payload: { seconds: 3_601 },
     }));
     await expect(unauthorized).resolves.toMatchObject({ payload: { code: 'AUTH_REQUIRED' } });
 
@@ -128,6 +128,14 @@ describe('activity timer WebSocket integration', () => {
     await Promise.all([teacherBuzzing, studentBuzzing, teacherInitialTick, studentInitialTick]);
     const deadlineAt = app.activity.deadlineAt as number;
 
+    const wrongStageLimit = teacher.inbox.waitFor((message) => message.type === 'error'
+      && message.requestId === 'limit-during-buzzing');
+    teacher.socket.send(JSON.stringify({
+      type: 'activity.setTimeLimit', requestId: 'limit-during-buzzing', payload: { seconds: 3_601 },
+    }));
+    await expect(wrongStageLimit).resolves.toMatchObject({ payload: { code: 'STAGE_CONFLICT' } });
+    expect(app.activity.timeLimitSeconds).toBe(2);
+
     const teacherEnded = teacher.inbox.waitFor((message) => message.type === 'activity.phaseChanged'
       && message.payload.stage === 'ENDED');
     const studentEnded = student.inbox.waitFor((message) => message.type === 'activity.phaseChanged'
@@ -142,6 +150,34 @@ describe('activity timer WebSocket integration', () => {
     }));
     await expect(late).resolves.toMatchObject({ payload: { code: 'STAGE_CONFLICT' } });
   }, 6_000);
+
+  it('includes the current remaining time in a reconnect snapshot during BUZZING', async () => {
+    const { app, port } = await startServer();
+    const teacher = await connect(port);
+    await loginTeacher(teacher.socket, teacher.inbox);
+    await expect(setLimit(30, teacher.socket, teacher.inbox)).resolves.toMatchObject({
+      type: 'activity.timeLimitSet', payload: { seconds: 30 },
+    });
+
+    const buzzing = teacher.inbox.waitFor((message) => message.type === 'activity.phaseChanged'
+      && message.payload.stage === 'BUZZING');
+    teacher.socket.send(JSON.stringify({
+      type: 'activity.advance', requestId: 'start', payload: { from: 'PREPARING', to: 'BUZZING' },
+    }));
+    await buzzing;
+    const deadlineAt = app.activity.deadlineAt as number;
+    await new Promise((resolve) => setTimeout(resolve, 1_250));
+
+    const reconnectingStudent = await connect(port);
+    const snapshot = reconnectingStudent.inbox.all.find((message) => message.type === 'activity.snapshot');
+    expect(snapshot?.payload).toMatchObject({ stage: 'BUZZING', timeLimitSeconds: 30 });
+    expect(Math.abs(Number(snapshot?.payload.remainingSeconds) - app.activity.getRemainingSeconds()!))
+      .toBeLessThanOrEqual(1);
+    expect(Number(snapshot?.payload.remainingSeconds)).toBeGreaterThan(0);
+    expect(Number(snapshot?.payload.remainingSeconds)).toBeLessThan(30);
+    expect(Number(snapshot?.payload.remainingSeconds)).toBeGreaterThanOrEqual(28);
+    expect(Date.now()).toBeLessThan(deadlineAt);
+  }, 4_000);
 
   it('manual end stops the countdown and the delayed timer cannot publish a second end', async () => {
     const { app, port } = await startServer();

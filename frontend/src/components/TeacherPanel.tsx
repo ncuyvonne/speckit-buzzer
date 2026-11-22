@@ -177,7 +177,7 @@ export function TeacherPanel({
             {resetDialogOpen && (
               <div role="dialog" aria-modal="true" aria-labelledby="reset-activity-title">
                 <h3 id="reset-activity-title">確認重設活動</h3>
-                <p>保留目前學習單與題目；清除本場作答、鎖定、成功結果、正誤標記及分數，並將時限歸零。</p>
+                <p>保留目前學習單、題目及公平順位設定；清除本場作答、鎖定、成功結果、正誤標記及分數，並將時限歸零。</p>
                 <button type="button" disabled={!connected} onClick={() => { onReset(); setResetDialogOpen(false); }}>確認重設</button>
                 <button type="button" onClick={() => setResetDialogOpen(false)}>取消</button>
               </div>

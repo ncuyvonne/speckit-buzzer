@@ -44,7 +44,7 @@ test('teacher marks, revises, and clears a winner; students see the live scorebo
 
   await page.getByRole('button', { name: '重設活動' }).click();
   const dialog = page.getByRole('dialog', { name: '確認重設活動' });
-  await expect(dialog).toContainText('保留目前學習單與題目');
+  await expect(dialog).toContainText('保留目前學習單、題目及公平順位設定');
   await expect(dialog).toContainText('清除本場作答、鎖定、成功結果、正誤標記及分數');
   await dialog.getByRole('button', { name: '取消' }).click();
   await expect(page.getByText('活動階段：已結束')).toBeVisible();

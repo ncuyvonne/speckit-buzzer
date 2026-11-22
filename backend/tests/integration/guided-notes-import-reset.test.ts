@@ -17,6 +17,7 @@ describe('worksheet import activity cleanup', () => {
       { questionId: 'Q1', displayOrder: 1, sourceRowAtImport: 3 },
     ]);
     activity.setTimeLimitSeconds(30);
+    activity.setFairRankingSettings({ enabled: true, delaySeconds: 5 });
     let oldResultsPresent = true;
     const winningResultsProvider = { async getSnapshot(): Promise<WinningResultsSnapshot> {
       return { worksheet: activity.worksheet!, questions: activity.questions, winners: [] };
@@ -29,6 +30,7 @@ describe('worksheet import activity cleanup', () => {
     })).rejects.toMatchObject({ code: 'SHEET_NOT_FOUND' });
     expect(activity.questions.map((question) => question.questionId)).toEqual(['Q1']);
     expect(activity.timeLimitSeconds).toBe(30);
+    expect(activity.fairRankingSettings).toEqual({ enabled: true, delaySeconds: 5 });
     expect(oldResultsPresent).toBe(true);
 
     await service.importWorksheet({
@@ -36,6 +38,7 @@ describe('worksheet import activity cleanup', () => {
     });
     expect(activity.questions.map((question) => question.questionId)).toEqual(['Q2']);
     expect(activity.timeLimitSeconds).toBe(0);
+    expect(activity.fairRankingSettings).toEqual({ enabled: true, delaySeconds: 5 });
     expect(oldResultsPresent).toBe(false);
   });
 });

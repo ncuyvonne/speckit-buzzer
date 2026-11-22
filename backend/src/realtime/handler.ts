@@ -135,6 +135,15 @@ export class RealtimeHub {
           this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
           return;
         }
+        if (this.#activity.stage !== 'PREPARING') {
+          this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+          return;
+        }
+        if (!Number.isInteger(message.payload.seconds)
+          || message.payload.seconds < 0 || message.payload.seconds > 3_600) {
+          this.#sendError(context, 'TIME_LIMIT_INVALID', message.requestId);
+          return;
+        }
         try {
           if (!this.#activity.setTimeLimitSeconds(message.payload.seconds)) {
             this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
