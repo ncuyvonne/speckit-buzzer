@@ -127,7 +127,7 @@
 - [x] T033 [P] [Constitution V] Update acceptance walkthroughs and automated validation commands to match the delivered behavior in `specs/005-buzzer-ranking-export/quickstart.md`.
 - [x] T034 [P] [Constitution VII] Compare service responsibilities, data fields, role visibility, and message flow with `diagrams/005-buzzer-ranking-export-component.puml`, `diagrams/005-buzzer-ranking-export-class.puml`, and `diagrams/005-buzzer-ranking-export-sequence.puml`; update any mismatched `.puml` and its matching `.png`, regenerating PNGs with the PlantUML CLI.
 - [x] T035 [Constitution III] Run and record `npm run test --workspace @speckit-buzzer/backend`, `npm run test --workspace @speckit-buzzer/frontend`, `npm run test:e2e`, `npm run typecheck`, and `npm run build` from `package.json`, `backend/package.json`, and `frontend/package.json`; report actual commands and outcomes without marking unrun checks as passed.
-- [ ] T036 [Constitution VI] Keep Feature 005 PR #5 open from `codex/005-buzzer-ranking-export` to `main`; include scope, actual test evidence, and limitations, obtain reviewer approval before merging, and re-evaluate rebase only if retargeting introduces conflicts or Feature 004 files into the PR diff.
+- [x] T036 [Constitution VI] Keep Feature 005 PR #5 open from `codex/005-buzzer-ranking-export` to `main`; include scope, actual test evidence, and limitations, obtain reviewer approval before merging, and re-evaluate rebase only if retargeting introduces conflicts or Feature 004 files into the PR diff. Reviewer approval was recorded for head `80c19bf`, and PR #5 was merged to `main` as `0b2569f2ed6af1222accca2df6ffaf60470c2997` on 2026-11-22.
 
 ## PR Review Corrections
 
@@ -192,7 +192,7 @@ Each story has its own tests and checkpoint. Do not begin CSV or ended-result in
 - User story labels map directly to the four P1 stories in `specs/005-buzzer-ranking-export/spec.md`.
 - Reuse current test fixtures in `backend/tests/support/` and `frontend/tests/e2e/fixtures.ts` where applicable; do not add dependencies unless an implementation gap is demonstrated.
 - The original checkout remains `codex-003-buzzer-results`; the dedicated `codex/005-buzzer-ranking-export` worktree is the implementation checkout, and T001 records that the independent-branch gate is complete. Do not switch or commit the original checkout wholesale.
-- T036 remains open until the Feature 005 PR receives reviewer approval; PR #4 is merged and PR #5 currently targets `main`. Do not merge PR #5 before review approval.
+- T036 completed: PR #4 and PR #5 are merged to `main`; PR #5 contained 45 Feature 005-only files, documented test evidence and limitations, and received reviewer approval for head `80c19bf` before merging as `0b2569f2ed6af1222accca2df6ffaf60470c2997` on 2026-11-22. Retargeting introduced no conflicts or Feature 004 files, so no rebase was needed.
 
 ---
 
