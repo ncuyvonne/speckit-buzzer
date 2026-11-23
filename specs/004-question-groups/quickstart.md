@@ -168,3 +168,12 @@ Under the Feature 002 reference conditions—at most 100 top-level question IDs,
 - All non-target values, formulas, notes, and formatting are unchanged.
 
 Keep the sheet structure stable during each export. Run the edits between operations to verify the supported detection. If Sheets quota or a protected target rejects the first batch, verify no target values or anchors were applied. For an uncertain write, inspect the sheet before retrying. The service reconciles the existing attempt before it issues another write.
+
+
+## Teacher-provided worksheet template fixtures (2026-11-23)
+
+- The single-question and grouped-question CSVs supplied for this review are stored as `backend/tests/fixtures/feature004/單題_範例_學習單.csv` and `backend/tests/fixtures/feature004/題組_範例_學習單.csv`.
+- `npm run test --workspace @speckit-buzzer/backend -- tests/integration/teacher-worksheet-templates.test.ts` — passed, 1 file / 2 tests. Each test loads the original CSV grid, imports it through `GuidedNotesService`, checks the imported question IDs and layouts, simulates ended results, and exports through `FakeGoogleSheetsAdapter`.
+- The assertions verify the source header and marker cells, exact answer-cell addresses, and the complete worksheet matrix after export so every non-answer cell remains unchanged. The samples use row 4 headers, `題號` in column B, and `作答` in column G; the grouped sample contains two 2-slot groups and two single questions.
+- These fixture tests use the fake Sheets adapter; they do not call the live Google Sheets API.
+- Full regression on the isolated Feature 004 branch: `npm test` passed (frontend 6 files / 33 tests; backend 38 files / 222 tests); `npm run typecheck`, `npm run build`, and `git diff --check` passed.
