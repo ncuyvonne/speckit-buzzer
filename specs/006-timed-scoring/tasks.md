@@ -145,7 +145,7 @@ Write these tests before implementation and establish that each fails for the mi
 - [X] T045 [P] Compare the implemented services, state transitions, and message order with all four Feature 006 diagrams; update the `.puml` sources and regenerate paired PNGs only where implementation differs in `diagrams/006-timed-scoring-component.puml`, `diagrams/006-timed-scoring-class.puml`, `diagrams/006-timed-scoring-sequence-timer.puml`, and `diagrams/006-timed-scoring-sequence-scoring.puml`.
 - [X] T046 Update validation steps and record actual command results in `specs/006-timed-scoring/quickstart.md`; reconcile any contract, data-model, or plan change against `specs/006-timed-scoring/spec.md` and the corresponding design files.
 - [X] T047 Run the backend/frontend Vitest suites, Playwright E2E suite, `npm run typecheck`, and `npm run build` listed in `specs/006-timed-scoring/quickstart.md`; record commands, exit codes, and failures for the implementation handoff.
-- [ ] T048 Open a PR from `codex/006-timed-scoring`, include scope, diagram/document consistency, and actual test results from `specs/006-timed-scoring/plan.md`, obtain the required review, and merge only after approval.
+- [X] T048 Open a PR from `codex/006-timed-scoring`, include scope, diagram/document consistency, and actual test results from `specs/006-timed-scoring/plan.md`, obtain the required review, and merge only after approval (PR #6 was approved at `1596460` and merged as `bd4a63f`).
 
 ## Dependencies & Execution Order
 

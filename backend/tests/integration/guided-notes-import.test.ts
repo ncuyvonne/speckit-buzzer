@@ -197,6 +197,14 @@ describe('Guided Notes worksheet import integration', () => {
       worksheetTitle: null, questionIds: [], questionCount: 0, questionLayouts: [],
     });
 
+    const timeLimitSet = teacher.inbox.waitFor((message) => message.type === 'activity.timeLimitSet'
+      && message.payload.seconds === 30);
+    teacher.socket.send(JSON.stringify({
+      type: 'activity.setTimeLimit', requestId: 'set-time-limit-before-import', payload: { seconds: 30 },
+    }));
+    await timeLimitSet;
+    expect(app.activity.timeLimitSeconds).toBe(30);
+
     const importedPromise = teacher.inbox.waitFor((message) => message.type === 'guidedNotes.imported');
     sendImport(teacher.socket, 'good-import', 'valid-sheet');
     const imported = await importedPromise;
@@ -207,6 +215,7 @@ describe('Guided Notes worksheet import integration', () => {
     expect(sheets.resolveRequests).toContainEqual({ spreadsheetId: 'valid-sheet', worksheetTitle: '工作表1' });
     expect(app.activity.questions.map((question) => question.questionId)).toEqual(['1', '2', '4']);
     expect(app.activity.questionCount).toBe(3);
+    expect(app.activity.timeLimitSeconds).toBe(0);
     expect(JSON.stringify(app.activity.questions)).not.toContain('第一題說明');
 
     const reconnect = await connect(port);
