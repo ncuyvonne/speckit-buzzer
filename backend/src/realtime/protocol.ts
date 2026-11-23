@@ -60,7 +60,7 @@ export type ClientMessage =
 
 export type DecodeResult =
   | { ok: true; message: ClientMessage }
-  | { ok: false; code: 'INVALID_MESSAGE' | 'TIME_LIMIT_INVALID'; requestId?: string };
+  | { ok: false; code: 'INVALID_MESSAGE'; requestId?: string };
 
 const VALID_REQUEST_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const VALID_STAGES = new Set<ActivityStage>(['PREPARING', 'BUZZING', 'ENDED']);

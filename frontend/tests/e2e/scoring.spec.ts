@@ -37,6 +37,12 @@ test('teacher marks, revises, and clears a winner; students see the live scorebo
   await expect(student.getByRole('table', { name: '計分板' }).getByText('1 分')).toBeVisible();
   expect(Date.now() - markedAt).toBeLessThan(1_000);
 
+  await student.reload();
+  await expect(student.getByRole('status').first()).toContainText('已連線');
+  await expect(student.getByText('已加入組別：1')).toBeVisible();
+  await expect(student.getByRole('table', { name: '計分板' }).getByRole('row')
+    .filter({ hasText: '組別 1' }).getByText('1 分')).toBeVisible();
+
   await page.getByRole('button', { name: '標記錯誤：1' }).click();
   await expect(student.getByRole('table', { name: '計分板' }).getByRole('row').filter({ hasText: '組別 1' }).getByText('0 分')).toBeVisible();
   await page.getByRole('button', { name: '取消標記：1' }).click();
