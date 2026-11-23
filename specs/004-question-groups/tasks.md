@@ -206,4 +206,4 @@ Task: "T022 export browser tests in frontend/tests/e2e/guided-notes-export.spec.
 ## Phase 10: Approved Review Follow-ups
 
 - [X] T038 Use question `kind` to identify groups in export selection and read-back reconciliation; clarify no-winner group omission in the export sequence diagram, regenerate its PNG, and document exported-sheet reuse in README.
-- [ ] T039 Add cell-by-cell fixture tests for both reviewer-provided teacher CSV templates once those files are received.
+- [X] T039 Add cell-by-cell fixture tests for both reviewer-provided teacher CSV templates once those files are received.
