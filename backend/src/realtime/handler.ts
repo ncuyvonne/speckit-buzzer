@@ -1,8 +1,10 @@
 import { WebSocket } from 'ws';
 import type { AppConfig } from '../config.js';
 import { ActivityState } from '../domain/activity-state.js';
+import { ActivityTimer } from '../domain/activity-timer.js';
 import { BuzzerResultsQueryError, BuzzerResultsService } from '../domain/buzzer-results.js';
 import { formatBuzzerResultsLocalTimestamp, serializeBuzzerResultsCsv } from '../domain/buzzer-results-csv.js';
+import { ScoringService } from '../domain/scoring.js';
 import { GroupRoster } from '../domain/group-roster.js';
 import { GuidedNotesService, GuidedNotesServiceError } from '../guided-notes/service.js';
 import type { Question, QuestionLayoutSummary } from '../guided-notes/types.js';
@@ -20,9 +22,11 @@ interface ConnectionContext {
 export interface RealtimeHandlerOptions {
   readonly config: AppConfig;
   readonly activity: ActivityState;
+  readonly activityTimer: ActivityTimer;
   readonly roster: GroupRoster;
   readonly guidedNotes: GuidedNotesService;
   readonly buzzerResults: BuzzerResultsService;
+  readonly scoring: ScoringService;
 }
 
 function send(socket: WebSocket, message: unknown): void {
@@ -40,17 +44,21 @@ function questionLayoutSummary(question: Question): QuestionLayoutSummary {
 export class RealtimeHub {
   readonly #config: AppConfig;
   readonly #activity: ActivityState;
+  readonly #activityTimer: ActivityTimer;
   readonly #roster: GroupRoster;
   readonly #guidedNotes: GuidedNotesService;
   readonly #buzzerResults: BuzzerResultsService;
+  readonly #scoring: ScoringService;
   readonly #connections = new Set<ConnectionContext>();
 
   constructor(options: RealtimeHandlerOptions) {
     this.#config = options.config;
     this.#activity = options.activity;
+    this.#activityTimer = options.activityTimer;
     this.#roster = options.roster;
     this.#guidedNotes = options.guidedNotes;
     this.#buzzerResults = options.buzzerResults;
+    this.#scoring = options.scoring;
   }
 
   attach(socket: WebSocket): () => void {
@@ -99,6 +107,7 @@ export class RealtimeHub {
         this.#sendSnapshot(context);
         this.#sendFairRankingSettings(context, message.requestId);
         this.#sendTeacherProgress(context);
+        if (this.#activity.stage === 'ENDED') this.#sendScoreboard(context);
         return;
       }
       case 'activity.advance': {
@@ -115,10 +124,88 @@ export class RealtimeHub {
           this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
           return;
         }
-        const broadcast = JSON.stringify({ type: 'activity.phaseChanged', payload: { stage: result.stage } });
-        for (const connection of this.#connections) {
-          if (connection.socket.readyState === WebSocket.OPEN) connection.socket.send(broadcast);
+        if (result.stage === 'BUZZING') this.#activityTimer.start();
+        else if (result.stage === 'ENDED') this.#activityTimer.stop();
+        this.broadcastPhaseChanged();
+        if (result.stage === 'BUZZING') this.#broadcastOwnProgressToStudents();
+        return;
+      }
+      case 'activity.setTimeLimit': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
         }
+        if (this.#activity.stage !== 'PREPARING') {
+          this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+          return;
+        }
+        if (!Number.isInteger(message.payload.seconds)
+          || message.payload.seconds < 0 || message.payload.seconds > 3_600) {
+          this.#sendError(context, 'TIME_LIMIT_INVALID', message.requestId);
+          return;
+        }
+        try {
+          if (!this.#activity.setTimeLimitSeconds(message.payload.seconds)) {
+            this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+            return;
+          }
+        } catch {
+          this.#sendError(context, 'TIME_LIMIT_INVALID', message.requestId);
+          return;
+        }
+        send(context.socket, {
+          type: 'activity.timeLimitSet',
+          requestId: message.requestId,
+          payload: { seconds: message.payload.seconds },
+        });
+        return;
+      }
+      case 'activity.reset': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (!this.#activity.reset()) {
+          this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+          return;
+        }
+        this.#activityTimer.stop();
+        this.#buzzerResults.clearSession();
+        this.#scoring.clear();
+        this.#broadcast({ type: 'activity.resetCompleted', payload: { stage: 'PREPARING', timeLimitSeconds: 0 } });
+        this.#broadcastPhase();
+        this.#broadcastTeacherProgress();
+        return;
+      }
+      case 'buzzerResults.markCorrectness': {
+        if (context.role !== 'TEACHER') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        const result = this.#scoring.markCorrectness(message.payload.questionId, message.payload.judgement);
+        if (!result.accepted) {
+          this.#sendError(context, result.code, message.requestId);
+          return;
+        }
+        send(context.socket, {
+          type: 'buzzerResults.correctnessMarked',
+          requestId: message.requestId,
+          payload: { questionId: result.questionId, judgement: result.judgement },
+        });
+        this.#broadcastTeacherProgress();
+        this.#broadcastScoreboard();
+        return;
+      }
+      case 'buzzerResults.getScoreboard': {
+        if (context.role !== 'TEACHER' && context.role !== 'STUDENT') {
+          this.#sendError(context, 'AUTH_REQUIRED', message.requestId);
+          return;
+        }
+        if (this.#activity.stage !== 'ENDED') {
+          this.#sendError(context, 'STAGE_CONFLICT', message.requestId);
+          return;
+        }
+        this.#sendScoreboard(context, message.requestId);
         return;
       }
       case 'buzzerResults.setFairRanking': {
@@ -311,7 +398,7 @@ export class RealtimeHub {
   #sendSnapshot(context: ConnectionContext): void {
     send(context.socket, {
       type: 'activity.snapshot',
-      payload: { stage: this.#activity.stage, groups: this.#roster.ids },
+      payload: this.#activityPayload({ groups: this.#roster.ids }),
     });
     if (context.role === 'TEACHER') {
       send(context.socket, {
@@ -323,6 +410,34 @@ export class RealtimeHub {
           questionLayouts: this.#activity.questions.map(questionLayoutSummary),
         },
       });
+    }
+  }
+
+  broadcastCountdown(remainingSeconds: number): void {
+    this.#broadcast({ type: 'activity.countdown', payload: { remainingSeconds } });
+  }
+
+  broadcastPhaseChanged(): void {
+    this.#broadcast({ type: 'activity.phaseChanged', payload: this.#activityPayload() });
+  }
+
+  #broadcastPhase(): void {
+    this.broadcastPhaseChanged();
+  }
+
+  #activityPayload(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      stage: this.#activity.stage,
+      timeLimitSeconds: this.#activity.timeLimitSeconds,
+      remainingSeconds: this.#activity.getRemainingSeconds(),
+      ...extra,
+    };
+  }
+
+  #broadcast(message: unknown): void {
+    const broadcast = JSON.stringify(message);
+    for (const connection of this.#connections) {
+      if (connection.socket.readyState === WebSocket.OPEN) connection.socket.send(broadcast);
     }
   }
 
@@ -338,7 +453,7 @@ export class RealtimeHub {
   }
 
   #sendOwnProgress(context: ConnectionContext): void {
-    if (context.role !== 'STUDENT' || context.groupId === null) return;
+    if (context.role !== 'STUDENT' || context.groupId === null || this.#activity.stage !== 'BUZZING') return;
     try {
       send(context.socket, {
         type: 'buzzerResults.ownProgress',
@@ -351,10 +466,25 @@ export class RealtimeHub {
 
   #sendTeacherProgress(context: ConnectionContext, requestId?: string): void {
     if (context.role !== 'TEACHER') return;
+    const progress = this.#buzzerResults.getTeacherProgress();
     send(context.socket, {
       type: 'buzzerResults.teacherProgress',
       ...(requestId ? { requestId } : {}),
-      payload: this.#buzzerResults.getTeacherProgress(),
+      payload: {
+        questions: progress.questions.map((question) => ({
+          ...question,
+          judgement: this.#scoring.getJudgement(question.questionId),
+        })),
+      },
+    });
+  }
+
+  #sendScoreboard(context: ConnectionContext, requestId?: string): void {
+    if (context.role !== 'TEACHER' && context.role !== 'STUDENT') return;
+    send(context.socket, {
+      type: 'buzzerResults.scoreboard',
+      ...(requestId ? { requestId } : {}),
+      payload: { entries: this.#scoring.getScoreboard() },
     });
   }
 
@@ -373,7 +503,21 @@ export class RealtimeHub {
     }
   }
 
+  #broadcastScoreboard(): void {
+    if (this.#activity.stage !== 'ENDED') return;
+    for (const connection of this.#connections) {
+      if (connection.role === 'TEACHER' || connection.role === 'STUDENT') this.#sendScoreboard(connection);
+    }
+  }
+
+  #broadcastOwnProgressToStudents(): void {
+    for (const connection of this.#connections) {
+      if (connection.role === 'STUDENT') this.#sendOwnProgress(connection);
+    }
+  }
+
   #broadcastOwnProgress(groupId: string): void {
+    if (this.#activity.stage !== 'BUZZING') return;
     for (const connection of this.#connections) {
       if (connection.role === 'STUDENT' && connection.groupId === groupId) this.#sendOwnProgress(connection);
     }

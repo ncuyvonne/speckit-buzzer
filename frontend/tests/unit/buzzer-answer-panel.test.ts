@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { BuzzerAnswerPanel } from '../../src/components/BuzzerAnswerPanel';
 import type { BuzzerResultsViewState } from '../../src/state/buzzer-results';
 
-function renderPanel(state: BuzzerResultsViewState): string {
+function renderPanel(state: BuzzerResultsViewState, stage: 'PREPARING' | 'BUZZING' | 'ENDED' = 'BUZZING'): string {
   return renderToStaticMarkup(createElement(BuzzerAnswerPanel, {
     groupId: 'A',
-    stage: 'BUZZING',
+    stage,
     connected: true,
     state,
     questionLayouts: [],
@@ -27,6 +27,9 @@ describe('BuzzerAnswerPanel', () => {
       studentResults: null,
       fairRankingSettings: { enabled: false, delaySeconds: null },
       csvExport: { status: 'idle', fileName: null, message: null },
+      scoreboard: null,
+      submittedCount: 1,
+      totalQuestionCount: 2,
     };
 
     const markup = renderPanel(state);
@@ -48,8 +51,30 @@ describe('BuzzerAnswerPanel', () => {
       studentResults: null,
       fairRankingSettings: { enabled: false, delaySeconds: null },
       csvExport: { status: 'idle', fileName: null, message: null },
+      scoreboard: null,
+      submittedCount: 0,
+      totalQuestionCount: 1,
     };
 
     expect(renderPanel(state)).toContain(guidance);
+  });
+
+  it('shows the exact own-group count only while BUZZING', () => {
+    const state: BuzzerResultsViewState = {
+      questionIds: ['1', '2', '3'],
+      ownProgress: [],
+      acceptedSubmission: null,
+      error: null,
+      teacherProgress: null,
+      studentResults: null,
+      fairRankingSettings: { enabled: false, delaySeconds: null },
+      csvExport: { status: 'idle', fileName: null, message: null },
+      scoreboard: null,
+      submittedCount: 1,
+      totalQuestionCount: 3,
+    };
+    expect(renderPanel(state)).toContain('本組已送出 1 / 3');
+    expect(renderPanel(state, 'PREPARING')).not.toContain('本組已送出');
+    expect(renderPanel(state, 'ENDED')).not.toContain('本組已送出');
   });
 });

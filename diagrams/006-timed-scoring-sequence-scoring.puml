@@ -1,0 +1,74 @@
+@startuml
+title 006 正誤標記與計分板 - 時序圖
+
+actor "老師" as Teacher
+actor "學生" as Student
+participant "課堂介面" as UI
+participant "即時連線" as Realtime
+participant "活動狀態" as Activity
+participant "搶答結果" as Answers
+participant "正誤與計分板" as Scores
+participant "活動計時" as Timer
+
+Teacher -> UI : 標記題目對或錯
+UI -> Realtime : 提交正誤標記
+Realtime -> Scores : markCorrectness(questionId, judgement)
+Scores -> Activity : 確認 ENDED 且題目存在
+Scores -> Answers : 查詢該題 winner
+Answers --> Scores : 成功組別及答案／無成功組別
+alt 活動已結束且有成功組別
+  Scores -> Scores : 重算得分及排序
+  Scores --> Realtime : 最新計分板與 teacherProgress 判定
+  Realtime --> Teacher : correctnessMarked
+  Realtime --> Teacher : 更新 teacherProgress 與計分板
+  Realtime --> Student : 更新計分板
+else 尚未結束或無成功組別
+  Realtime --> UI : 拒絕標記並說明原因
+end
+
+Teacher -> UI : 改標或取消
+UI -> Realtime : 更新或移除目前標記
+Realtime -> Scores : 取代／取消後重算
+Scores --> Realtime : 最新計分板與 teacherProgress 判定
+Realtime --> Teacher : 更新 teacherProgress 與計分板
+Realtime --> Student : 更新計分板
+
+Student -> UI : 活動結束後查看計分板
+UI -> Realtime : 查詢結束後可見資料
+Realtime -> Scores : 取得依規則排序的計分板
+Scores --> Realtime : 排名、組別、得分、成功題數
+Realtime --> UI : 僅傳送計分板及既有學生可見結果
+
+Teacher -> UI : 選擇活動重設
+UI --> Teacher : 顯示保留與清除範圍，詢問是否確認
+alt 老師確認
+  Teacher -> UI : 確認重設
+  UI -> Realtime : 重設請求
+  Realtime -> Activity : 驗證老師身分及活動已結束
+  alt 重設可執行
+    Realtime -> Activity : reset()；ENDED → PREPARING、保留學習單／題目、時限歸 0
+    Realtime -> Timer : stop() 並清除 deadline
+    Realtime -> Answers : clearSession()；清除作答、鎖定及成功結果
+    Realtime -> Scores : clear()；清除正誤標記及分數
+    Realtime --> UI : resetCompleted、phaseChanged 與空 teacherProgress
+  else 身分或階段不符
+    Realtime --> UI : 拒絕重設且不改變活動資料
+  end
+else 老師取消
+  UI -> UI : 關閉確認提示，不送出重設請求
+  UI --> Teacher : 保留目前活動與所有資料
+end
+
+Teacher -> UI : 重新匯入學習單
+UI -> Realtime : 提交匯入
+Realtime -> Activity : 驗證準備階段並替換學習單及題目
+alt 匯入成功
+  Activity --> Realtime : commit 新題目，時限及 deadline 歸零
+  Realtime -> Timer : stop() 並使舊 callback 失效
+  Realtime -> Answers : clearSession()；清除舊活動作答與成功結果
+  Realtime -> Scores : clear()；清除舊標記與分數
+  Realtime --> UI : 顯示新學習單與題目數
+else 匯入失敗
+  Realtime --> UI : 顯示錯誤並保留目前學習單與題目
+end
+@enduml

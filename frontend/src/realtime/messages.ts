@@ -46,6 +46,9 @@ export type ErrorCode =
   | 'GROUP_ANSWER_INVALID'
   | 'FAIR_RANKING_INVALID'
   | 'RESULTS_NOT_READY'
+  | 'ANSWER_TIMED_OUT'
+  | 'TIME_LIMIT_INVALID'
+  | 'WINNER_NOT_FOUND'
   | 'SHEET_WRITE_FAILED'
   | 'SHEET_WRITE_UNCONFIRMED';
 
@@ -96,6 +99,14 @@ export type ClientMessage =
   | { type: 'buzzerResults.setFairRanking'; requestId: string; payload: FairRankingSettings }
   | { type: 'buzzerResults.exportCsv'; requestId: string; payload: Record<string, never> }
   | { type: 'activity.advance'; requestId: string; payload: { from: ActivityStage; to: ActivityStage } }
+  | { type: 'activity.setTimeLimit'; requestId: string; payload: { seconds: number } }
+  | { type: 'activity.reset'; requestId: string; payload: Record<string, never> }
+  | {
+      type: 'buzzerResults.markCorrectness';
+      requestId: string;
+      payload: { questionId: string; judgement: CorrectnessJudgement | null };
+    }
+  | { type: 'buzzerResults.getScoreboard'; requestId: string; payload: Record<string, never> }
   | {
       type: 'guidedNotes.import';
       requestId: string;
@@ -104,7 +115,10 @@ export type ClientMessage =
   | { type: 'guidedNotes.export'; requestId: string; payload: Record<string, never> };
 
 export type ServerMessage =
-  | { type: 'activity.snapshot'; payload: { stage: ActivityStage; groups: string[] } }
+  | {
+      type: 'activity.snapshot';
+      payload: { stage: ActivityStage; groups: string[]; timeLimitSeconds: number; remainingSeconds: number | null };
+    }
   | { type: 'buzzerResults.teacherProgress'; requestId?: string; payload: TeacherProgress }
   | { type: 'buzzerResults.studentResults'; requestId: string; payload: StudentResults }
   | { type: 'buzzerResults.fairRankingConfigured'; requestId: string; payload: FairRankingSettings }
@@ -112,13 +126,17 @@ export type ServerMessage =
   | { type: 'buzzerResults.questionList'; payload: { questionIds: string[]; questionLayouts?: QuestionLayoutSummary[] } }
   | {
       type: 'buzzerResults.ownProgress';
-      payload: { questions: Array<{
-        questionId: string;
-        submitted: boolean;
-        answerText: string | null;
-        answers?: SubAnswer[] | null;
-        locked: boolean;
-      }> };
+      payload: {
+        questions: Array<{
+          questionId: string;
+          submitted: boolean;
+          answerText: string | null;
+          answers?: SubAnswer[] | null;
+          locked: boolean;
+        }>;
+        submittedCount: number;
+        totalQuestionCount: number;
+      };
     }
   | { type: 'teacher.authenticated'; requestId: string; payload: { ok: true } }
   | { type: 'student.joined'; requestId: string; payload: { ok: true; groupId: string } }
@@ -127,7 +145,19 @@ export type ServerMessage =
       requestId: string;
       payload: { questionId: string; accepted: true; locked: true };
     }
-  | { type: 'activity.phaseChanged'; payload: { stage: ActivityStage } }
+  | {
+      type: 'activity.phaseChanged';
+      payload: { stage: ActivityStage; timeLimitSeconds: number; remainingSeconds: number | null };
+    }
+  | { type: 'activity.countdown'; payload: { remainingSeconds: number } }
+  | { type: 'activity.timeLimitSet'; requestId: string; payload: { seconds: number } }
+  | { type: 'activity.resetCompleted'; payload: { stage: 'PREPARING'; timeLimitSeconds: 0 } }
+  | {
+      type: 'buzzerResults.correctnessMarked';
+      requestId: string;
+      payload: { questionId: string; judgement: CorrectnessJudgement | null };
+    }
+  | { type: 'buzzerResults.scoreboard'; requestId?: string; payload: { entries: readonly ScoreboardEntry[] } }
   | {
       type: 'guidedNotes.snapshot';
       payload: {
@@ -167,7 +197,16 @@ export interface TeacherProgress {
     readonly winningGroupId: string | null;
     readonly winningAnswer: string | null;
     readonly winningAnswers?: readonly SubAnswer[] | null;
+    readonly judgement?: CorrectnessJudgement | null;
   }[];
+}
+
+export type CorrectnessJudgement = 'CORRECT' | 'INCORRECT';
+export interface ScoreboardEntry {
+  readonly rank: number;
+  readonly groupId: string;
+  readonly score: number;
+  readonly successfulQuestionCount: number;
 }
 
 export interface StudentQuestionResult {

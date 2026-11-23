@@ -50,6 +50,7 @@ export function GuidedNotesPanel({
   return (
     <section aria-labelledby="guided-notes-title">
       <h2 id="guided-notes-title">Guided Notes</h2>
+      <p>成功匯入後會清除舊作答與計分資料，並將搶答時限重設為 0 秒（不限時）；公平順位設定會保留。</p>
       <form onSubmit={submit}>
         <label htmlFor="guided-notes-spreadsheet-url">Google 試算表網址</label>
         <input

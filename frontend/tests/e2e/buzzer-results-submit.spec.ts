@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures';
 
 async function waitForConnected(page: import('@playwright/test').Page) {
-  await expect(page.getByRole('status')).toContainText('已連線');
+  await expect(page.getByText('已連線', { exact: true })).toBeVisible();
 }
 
 async function loginTeacher(page: import('@playwright/test').Page) {

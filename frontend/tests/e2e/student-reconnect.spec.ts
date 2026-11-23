@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 const SELECTION_KEY = 'classroom.groupId';
 
 async function waitForConnected(page: Page) {
-  await expect(page.getByRole('status')).toContainText('已連線');
+  await expect(page.getByText('已連線', { exact: true })).toBeVisible();
 }
 
 async function joinGroup(page: Page, groupId: string) {

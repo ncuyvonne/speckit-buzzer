@@ -26,6 +26,8 @@ export class ActivityState {
   #questions: readonly Question[] = Object.freeze([]);
   #exportAnchorState: ExportAnchorState = Object.freeze({ status: 'NONE' });
   #fairRankingSettings: FairRankingSettings = Object.freeze({ enabled: false, delaySeconds: null });
+  #timeLimitSeconds = 0;
+  #deadlineAt: number | null = null;
 
   get stage(): ActivityStage {
     return this.#stage;
@@ -105,6 +107,52 @@ export class ActivityState {
     return this.#questions.length;
   }
 
+  get timeLimitSeconds(): number {
+    return this.#timeLimitSeconds;
+  }
+
+  get deadlineAt(): number | null {
+    return this.#deadlineAt;
+  }
+
+  getRemainingSeconds(now = Date.now()): number | null {
+    if (this.#timeLimitSeconds === 0 || this.#stage === 'PREPARING') return null;
+    if (this.#stage === 'ENDED') return 0;
+    if (this.#deadlineAt === null) return null;
+    return Math.max(0, Math.ceil((this.#deadlineAt - now) / 1_000));
+  }
+
+  setTimeLimitSeconds(seconds: number): boolean {
+    if (!Number.isInteger(seconds) || seconds < 0 || seconds > 3_600) {
+      throw new RangeError('Time limit must be an integer from 0 through 3600 seconds.');
+    }
+    if (this.#stage !== 'PREPARING') return false;
+    this.#timeLimitSeconds = seconds;
+    this.#deadlineAt = null;
+    return true;
+  }
+
+  startCountdown(startedAt: number): number | null {
+    if (this.#stage !== 'BUZZING') return null;
+    if (!Number.isFinite(startedAt)) throw new TypeError('Countdown start time must be finite.');
+    this.#deadlineAt = this.#timeLimitSeconds === 0
+      ? null
+      : Math.trunc(startedAt) + this.#timeLimitSeconds * 1_000;
+    return this.#deadlineAt;
+  }
+
+  clearDeadline(): void {
+    this.#deadlineAt = null;
+  }
+
+  reset(): boolean {
+    if (this.#stage !== 'ENDED') return false;
+    this.#stage = 'PREPARING';
+    this.#timeLimitSeconds = 0;
+    this.#deadlineAt = null;
+    return true;
+  }
+
   /** Replaces the complete Guided Notes import only while the authoritative stage is PREPARING. */
   replaceGuidedNotesImport(worksheet: WorksheetReference, questions: readonly Question[]): boolean {
     if (this.#stage !== 'PREPARING') return false;
@@ -154,6 +202,8 @@ export class ActivityState {
     this.#worksheet = Object.freeze({ ...worksheet });
     this.#questions = Object.freeze(questions.map((question) => Object.freeze({ ...question })));
     this.#exportAnchorState = Object.freeze({ status: 'NONE' });
+    this.#timeLimitSeconds = 0;
+    this.#deadlineAt = null;
     return true;
   }
 

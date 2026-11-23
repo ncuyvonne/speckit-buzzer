@@ -28,6 +28,9 @@ export type ErrorCode =
   | 'GROUP_ANSWER_INVALID'
   | 'FAIR_RANKING_INVALID'
   | 'RESULTS_NOT_READY'
+  | 'ANSWER_TIMED_OUT'
+  | 'TIME_LIMIT_INVALID'
+  | 'WINNER_NOT_FOUND'
   | 'SHEET_WRITE_FAILED'
   | 'SHEET_WRITE_UNCONFIRMED';
 
@@ -40,6 +43,14 @@ export type ClientMessage =
   | { type: 'buzzerResults.setFairRanking'; requestId: string; payload: FairRankingSettings }
   | { type: 'buzzerResults.exportCsv'; requestId: string; payload: Record<string, never> }
   | { type: 'activity.advance'; requestId: string; payload: { from: ActivityStage; to: ActivityStage } }
+  | { type: 'activity.setTimeLimit'; requestId: string; payload: { seconds: number } }
+  | { type: 'activity.reset'; requestId: string; payload: Record<string, never> }
+  | {
+      type: 'buzzerResults.markCorrectness';
+      requestId: string;
+      payload: { questionId: string; judgement: 'CORRECT' | 'INCORRECT' | null };
+    }
+  | { type: 'buzzerResults.getScoreboard'; requestId: string; payload: Record<string, never> }
   | {
       type: 'guidedNotes.import';
       requestId: string;
@@ -49,7 +60,7 @@ export type ClientMessage =
 
 export type DecodeResult =
   | { ok: true; message: ClientMessage }
-  | { ok: false; code: 'INVALID_MESSAGE'; requestId?: string };
+  | { ok: false; code: 'INVALID_MESSAGE' | 'TIME_LIMIT_INVALID'; requestId?: string };
 
 const VALID_REQUEST_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const VALID_STAGES = new Set<ActivityStage>(['PREPARING', 'BUZZING', 'ENDED']);
@@ -79,6 +90,9 @@ const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   GROUP_ANSWER_INVALID: '題組答案編號與題目不符；請檢查各子題後再送出。',
   FAIR_RANKING_INVALID: '公平順位延遲必須介於 1 到 30 秒（含端點），請修正設定後再試。',
   RESULTS_NOT_READY: '活動結果尚未就緒，請稍後再試；目前不會產生 CSV。',
+  ANSWER_TIMED_OUT: '作答期限已到，答案未送出。',
+  TIME_LIMIT_INVALID: '搶答時限須為 0 至 3600 的整數秒，請修正後再試。',
+  WINNER_NOT_FOUND: '這一題尚無成功組別，無法標記正誤。',
   SHEET_WRITE_FAILED: '試算表拒絕寫入，資料未變更；請檢查編輯權限或受保護儲存格。',
   SHEET_WRITE_UNCONFIRMED: '寫回結果未確認；批次可能已套用或仍會完成。請先檢查試算表，再決定是否重試。',
 };
@@ -200,6 +214,31 @@ export function decodeClientMessage(data: Buffer | ArrayBuffer | Buffer[], isBin
           type: parsed.type,
           requestId,
           payload: { from: payload.from as ActivityStage, to: payload.to as ActivityStage },
+        },
+      };
+    case 'activity.setTimeLimit':
+      if (typeof payload.seconds !== 'number' || !Number.isFinite(payload.seconds)) break;
+      if (Object.keys(payload).some((key) => key !== 'seconds')) break;
+      return {
+        ok: true,
+        message: { type: parsed.type, requestId, payload: { seconds: payload.seconds } },
+      };
+    case 'activity.reset':
+    case 'buzzerResults.getScoreboard':
+      if (Object.keys(payload).length !== 0) break;
+      return { ok: true, message: { type: parsed.type, requestId, payload: {} } };
+    case 'buzzerResults.markCorrectness':
+      if (
+        typeof payload.questionId !== 'string'
+        || !(payload.judgement === 'CORRECT' || payload.judgement === 'INCORRECT' || payload.judgement === null)
+        || Object.keys(payload).some((key) => key !== 'questionId' && key !== 'judgement')
+      ) break;
+      return {
+        ok: true,
+        message: {
+          type: parsed.type,
+          requestId,
+          payload: { questionId: payload.questionId, judgement: payload.judgement },
         },
       };
     case 'guidedNotes.import':

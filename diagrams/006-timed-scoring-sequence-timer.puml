@@ -1,0 +1,49 @@
+@startuml
+title 006 搶答時限 - 時序圖
+
+actor "老師" as Teacher
+actor "學生" as Student
+participant "課堂介面" as UI
+participant "即時連線" as Realtime
+participant "活動狀態" as Activity
+participant "活動計時" as Timer
+participant "搶答結果" as Answers
+
+Teacher -> UI : 在準備中設定秒數
+UI -> Realtime : 儲存時限
+Realtime -> Activity : 驗證 0 至 3600 整數秒
+Activity --> Realtime : 時限已設定
+Teacher -> UI : 開始搶答
+UI -> Realtime : 開始活動
+Realtime -> Activity : 進入搶答中
+Realtime -> Timer : 開始計時（時限 0 時不排程）
+Timer --> Realtime : 初始 remainingSeconds（限時時）
+Realtime --> UI : activity.countdown（限時時）
+Realtime --> UI : activity.phaseChanged（BUZZING、時限與剩餘時間）
+Realtime --> UI : 本組 ownProgress（只給該組學生）
+
+alt 老師手動結束
+  Teacher -> UI : 結束活動
+  UI -> Realtime : 結束搶答
+  Realtime -> Activity : 立即進入已結束
+  Realtime -> Timer : stop() 並使舊 generation 失效
+  Realtime --> UI : activity.phaseChanged（ENDED）
+  Student -> UI : 提交答案
+  UI -> Realtime : 答案提交
+  Realtime -> Answers : 驗證活動階段
+  Answers --> Realtime : 拒絕：活動已結束
+else 答案與截止時刻相近
+  Student -> UI : 提交答案
+  UI -> Realtime : 答案提交
+  Realtime -> Answers : 驗證收到時間與截止時刻
+  alt 收到時間早於截止時刻
+    Answers --> Realtime : 依既有規則接受
+  else 收到時間等於或晚於截止時刻
+    Answers --> Realtime : 拒絕逾時答案，不改變順位或進度
+  end
+  Timer -> Activity : 到期 callback 驗證 generation、deadline 與 BUZZING
+  Timer --> Realtime : activity.countdown（0）
+  Timer -> Activity : 進入已結束並停止倒數
+  Realtime --> UI : activity.phaseChanged（ENDED）
+end
+@enduml

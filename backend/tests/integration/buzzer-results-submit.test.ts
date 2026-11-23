@@ -148,7 +148,8 @@ describe('buzzer results submit WebSocket integration', () => {
     await expect(lateStudent.inbox.waitFor((message) => message.type === 'buzzerResults.questionList'))
       .resolves.toMatchObject({ payload: { questionIds: ['1'] } });
 
-    const siblingProgress = secondStudent.inbox.waitFor((message) => message.type === 'buzzerResults.ownProgress');
+    const siblingProgress = secondStudent.inbox.waitFor((message) => message.type === 'buzzerResults.ownProgress'
+      && message.payload.questions?.[0]?.submitted === true);
     const firstAck = firstStudent.inbox.waitFor((message) => message.type === 'buzzerResults.submitted');
     firstStudent.socket.send(JSON.stringify({
       type: 'buzzerResults.submitAnswer', requestId: 'answer-1', payload: { questionId: '1', answerText: '  first  ' },

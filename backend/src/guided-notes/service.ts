@@ -91,6 +91,8 @@ export interface GuidedNotesServiceDependencies {
   readonly winningResultsProvider: WinningResultsProvider;
   readonly now?: () => number;
   readonly sleep?: (milliseconds: number) => Promise<void>;
+  /** Runs synchronously after the worksheet/questions have been committed. */
+  readonly onImportCommitted?: () => void;
 }
 
 interface OperationContext {
@@ -371,7 +373,7 @@ export class GuidedNotesService {
 
   async importWorksheet(command: ImportWorksheetCommand): Promise<ImportWorksheetResult> {
     try {
-      return await this.runExclusive('IMPORT', async ({ activity, sheets }, context) => {
+      return await this.runExclusive('IMPORT', async ({ activity, sheets, onImportCommitted }, context) => {
         if (activity.stage !== 'PREPARING') {
           throw new GuidedNotesServiceError('STAGE_CONFLICT', '活動已不在準備階段，請回到準備階段後再匯入。');
         }
@@ -422,6 +424,7 @@ export class GuidedNotesService {
         ) {
           throw new GuidedNotesServiceError('STAGE_CONFLICT', '活動階段已變更，題號清單未更新；請確認活動階段後重試。');
         }
+        onImportCommitted?.();
 
         return {
           worksheetTitle: resolved.worksheet.worksheetTitle,

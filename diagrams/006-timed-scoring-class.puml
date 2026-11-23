@@ -1,0 +1,97 @@
+@startuml
+title 006 計時搶答與計分板 - 類別圖
+
+class Activity {
+  stage
+  timeLimitSeconds
+  deadlineAt
+  worksheet
+  questions
+}
+
+class AcceptedSubmission {
+  groupId
+  questionId
+  receivedAt
+  answer
+}
+
+class QuestionResult {
+  questionId
+  winningGroupId
+  winningAnswer
+}
+
+class CorrectnessMark {
+  questionId
+  judgement: CORRECT | INCORRECT
+}
+
+class GroupStanding {
+  groupId
+  score
+  successfulQuestionCount
+  rank
+}
+
+class StudentAnswerProgress {
+  groupId
+  submittedQuestionCount
+  totalQuestionCount
+}
+
+class ActivityTimer {
+  deadlineAt
+  remainingSeconds
+  timerRunning
+  -generation
+  -scheduledHandle
+  +start()
+  +stop()
+}
+
+class ScoringService {
+  +markCorrectness(questionId, judgement)
+  +getScoreboard()
+  +clear()
+}
+
+Activity "1" o-- "0..1" ActivityTimer
+Activity "1" o-- "0..*" AcceptedSubmission
+Activity "1" o-- "0..*" QuestionResult
+QuestionResult "0..1" --> "1" AcceptedSubmission : successful answer
+QuestionResult "1" o-- "0..1" CorrectnessMark
+Activity "1" o-- "1" ScoringService
+ScoringService --> QuestionResult : winner and current judgement
+GroupStanding "*" --> "1" GroupRoster : groupId
+StudentAnswerProgress "*" --> "1" GroupRoster : groupId
+
+note right of CorrectnessMark
+僅老師在活動結束後設定。
+只對有成功組別的題目建立。
+每題至多一個目前判定。
+end note
+
+note bottom of GroupStanding
+score = 對標記數。
+successfulQuestionCount 不受正誤標記影響。
+排序：score 降冪、成功題數降冪、
+組別編號升冪。
+end note
+
+note right of StudentAnswerProgress
+題組視為一個主題。
+僅搶答中顯示，僅計本組已接受作答。
+end note
+
+note right of Activity
+老師確認重設後：
+回到準備中並保留 worksheet / questions；
+清除本場答案、成功結果與標記，
+timeLimitSeconds 設為 0。
+end note
+
+class GroupRoster {
+  groupIds
+}
+@enduml
