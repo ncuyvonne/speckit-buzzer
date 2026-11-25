@@ -9,14 +9,14 @@
 ```mermaid
 flowchart TD
     CSV["題庫 CSV"] -->|匯入| SHEET["Google 試算表"]
-    ACCOUNT["服務帳戶（編輯者）"] --> SHEET
+    ACCOUNT["服務帳戶"] --> SHEET
     TEACHER["老師瀏覽器"] <-->|即時操作| SERVER["本機後端"]
     STUDENT["學生瀏覽器"] <-->|即時操作| SERVER
-    SERVER <-->|讀題號／寫答案| API["Google Sheets API"]
+    SERVER <-->|讀題號／寫答案| API["Sheets API"]
     API <--> SHEET
 ```
 
-前端網址是 `http://127.0.0.1:5173`，後端網址是 `http://127.0.0.1:3001`。網站不能直接上傳電腦中的 CSV；先把 CSV 匯入 Google 試算表，再讓服務帳戶連線。
+圖中的「服務帳戶」須有試算表編輯者權限；本機後端透過 Sheets API 讀取題號並寫入答案。前端網址是 `http://127.0.0.1:5173`，後端網址是 `http://127.0.0.1:3001`。網站不能直接上傳電腦中的 CSV；先把 CSV 匯入 Google 試算表，再讓服務帳戶連線。
 
 ## 快速開始
 
